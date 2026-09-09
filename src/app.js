@@ -38,36 +38,46 @@ export async function guided (cwd) {
   const root = repoRoot(cwd)
   const L = layout(root)
   ensureDirs(L)
-  await offerGitignore(L)
 
-  let ledger = readLedger(L)
-  if (!ledger || !ledger.chunks?.length) ledger = await replan(L, ledger)
-  if (!ledger) return 1
+  // The readline interface holds stdin open, so anything that leaves this
+  // function without closing it leaves the process running on a real terminal
+  // — where stdin never reaches EOF to end it for us.
+  try {
+    await offerGitignore(L)
 
-  for (;;) {
-    const d = drift(ledger, root)
-    board(L, ledger, d)
+    let ledger = readLedger(L)
+    if (!ledger || !ledger.chunks?.length) ledger = await replan(L, ledger)
+    if (!ledger) return 1
 
-    const choice = await menu('What now?', [
-      { key: 'review', label: 'Review chunks', hint: `up to ${MAX_PER_LAUNCH} at a time — this spends money` },
-      { key: 'watch', label: 'Check on running reviews' },
-      { key: 'findings', label: 'Read findings' },
-      { key: 'replan', label: 'Change scope / re-plan' },
-      { key: 'clean', label: 'Clean up worktrees and branches' },
-      { key: 'quit', label: 'Quit' }
-    ])
+    for (;;) {
+      // Re-read: a background run finishing moves chunks into the archive, and
+      // the board would otherwise keep listing them as pending until a re-plan.
+      ledger = readLedger(L) ?? ledger
+      const d = drift(ledger, root)
+      board(L, ledger, d)
 
-    if (choice === 'quit') break
-    if (choice === 'review') ledger = await doReview(L, ledger) ?? ledger
-    else if (choice === 'watch') doWatch(L, ledger)
-    else if (choice === 'findings') doFindings(L, ledger)
-    else if (choice === 'replan') ledger = await replan(L, ledger) ?? ledger
-    else if (choice === 'clean') await doClean(L)
+      const choice = await menu('What now?', [
+        { key: 'review', label: 'Review chunks', hint: `up to ${MAX_PER_LAUNCH} at a time — this spends money` },
+        { key: 'watch', label: 'Check on running reviews' },
+        { key: 'findings', label: 'Read findings' },
+        { key: 'replan', label: 'Change scope / re-plan' },
+        { key: 'clean', label: 'Clean up worktrees and branches' },
+        { key: 'quit', label: 'Quit' }
+      ])
+
+      if (choice === 'quit') break
+      if (choice === 'review') ledger = await doReview(L, ledger) ?? ledger
+      else if (choice === 'watch') doWatch(L, ledger)
+      else if (choice === 'findings') doFindings(L, ledger)
+      else if (choice === 'replan') ledger = await replan(L, ledger) ?? ledger
+      else if (choice === 'clean') await doClean(L)
+    }
+
+    say('')
+    return 0
+  } finally {
+    closePrompt()
   }
-
-  closePrompt()
-  say('')
-  return 0
 }
 
 /* ---- the board ---------------------------------------------------------- */
@@ -92,7 +102,7 @@ function board (L, ledger, d) {
   const shown = rows.slice(0, 25)
   out(table(
     ['  #', 'files', 'lines', 'area', 'status'],
-    shown.map(r => [`  ${r.label}`, num(r.files), num(r.lines), r.area, paintStatus(r.state)]),
+    shown.map(r => [`  ${r.label}`, num(r.files), num(r.lines), sanitize(r.area), paintStatus(r.state)]),
     { align: [null, 'r', 'r'] }
   ))
   if (rows.length > shown.length) {
@@ -132,7 +142,7 @@ async function replan (L, ledger) {
       }
     )
     if (!picked.length) { say(c.yellow('  nothing selected')); return ledger }
-    include = picked.map(p => p.name).filter(n => n !== '.')
+    include = includeFor(picked, s.files)
     s = await survey(L.root, { include, exclude, reviewed: ledger?.reviewed ?? {} })
   }
 
@@ -154,6 +164,24 @@ async function replan (L, ledger) {
     c.dim(` from ${num(s.coverage.files - s.coverage.covered)} unreviewed files` +
       (s.coverage.covered ? `; ${num(s.coverage.covered)} already covered` : '')))
   return next
+}
+
+/**
+ * Turn the picked top-level buckets into git pathspecs.
+ *
+ * The '.' bucket is the repo's root-level files, which have no directory to
+ * name. Dropping it — as this used to — means picking only root files yields
+ * an empty include, and an empty include means the *whole repo*: the exact
+ * opposite of the request. Picking '.' alongside `src` silently lost the root
+ * files instead. Listing them individually says what was actually chosen.
+ */
+export function includeFor (picked, files) {
+  const specs = []
+  for (const p of picked) {
+    if (p.name !== '.') { specs.push(p.name); continue }
+    for (const f of files) if (!f.path.includes('/')) specs.push(f.path)
+  }
+  return specs
 }
 
 /* ---- reviewing ---------------------------------------------------------- */
@@ -232,6 +260,12 @@ function doWatch (L, ledger) {
   say(c.dim(`\n  logs: ${path.relative(L.root, L.logs)}/`))
 }
 
+/** '?' hides why: a payload that would not parse is not the same as no findings. */
+function findingsCell (r) {
+  if (r.findingsParsed === false) return 'unreadable'
+  return r.findings ?? '?'
+}
+
 function doFindings (L, ledger) {
   const fresh = readLedger(L) ?? ledger
   const done = doneRows(L, fresh)
@@ -239,9 +273,14 @@ function doFindings (L, ledger) {
   if (!done.length) { say(c.dim('  no completed reviews yet')); return }
   out(table(
     ['  #', 'files', 'findings', 'area'],
-    done.map(r => [`  ${r.label}`, num(r.files), r.findings ?? '?', r.area]),
+    done.map(r => [`  ${r.label}`, num(r.files), findingsCell(r), sanitize(r.area)]),
     { align: [null, 'r', 'r'] }
   ))
+  const unreadable = done.filter(r => r.findingsParsed === false)
+  if (unreadable.length) {
+    say(c.yellow(`\n  ${unreadable.length} chunk(s) returned a payload curc could not parse: ${unreadable.map(r => r.label).join(', ')}`))
+    say(c.dim('  They still count as reviewed, so nothing re-bills — the raw output is on disk.'))
+  }
   const all = collectFindings(L, fresh)
   say('')
   say(`  ${num(all.length)} finding(s) across ${done.length} chunk(s).`)

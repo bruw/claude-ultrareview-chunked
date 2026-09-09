@@ -111,3 +111,30 @@ test('every place that states a version states the same one', () => {
   assert.equal(plugin.version, pkg.version)
   assert.equal(market.plugins[0].version, pkg.version)
 })
+
+/* ---- the scope picker ---------------------------------------------------- */
+
+test("the scope picker's root bucket selects the root files, not the whole repo", async () => {
+  const { includeFor } = await import('../src/app.js')
+  const files = [
+    { path: 'README.md' }, { path: 'package.json' },
+    { path: 'src/a.js' }, { path: 'lib/b.js' }
+  ]
+
+  // An empty include means "the whole repo", so dropping '.' turned "only the
+  // root files" into its exact opposite.
+  assert.deepEqual(includeFor([{ name: '.' }], files), ['README.md', 'package.json'])
+
+  // And picking it alongside a directory used to lose the root files silently.
+  assert.deepEqual(includeFor([{ name: 'src' }, { name: '.' }], files),
+    ['src', 'README.md', 'package.json'])
+
+  assert.deepEqual(includeFor([{ name: 'src' }, { name: 'lib' }], files), ['src', 'lib'])
+})
+
+test('the picked root files really do scope a plan to themselves', () => {
+  const { dir } = tmpRepo({ 'README.md': lines(5), 'src/a.js': lines(5), 'lib/b.js': lines(5) })
+  const plan = JSON.parse(curc(dir, ['plan', '--json', '--scope', 'README.md']).out)
+  assert.deepEqual(plan.chunks.flatMap(c => c.paths), ['README.md'])
+  cleanup(dir)
+})
