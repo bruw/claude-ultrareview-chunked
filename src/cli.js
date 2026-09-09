@@ -11,7 +11,7 @@ import { removeWorktree } from './worktree.js'
 import { reviewArgv } from './claude.js'
 import { guided } from './app.js'
 import { c, say, out, num, table, paintStatus, costBand } from './ui.js'
-import { parseSpec } from './prompt.js'
+import { resolveIds } from './prompt.js'
 
 const VERSION = '0.1.0'
 
@@ -79,6 +79,21 @@ export async function main (argv) {
 
 /* ---- commands ----------------------------------------------------------- */
 
+/**
+ * Why a --chunks spec selected nothing usable, or null if it is fine.
+ *
+ * An unknown id is refused rather than skipped: every number curc prints is a
+ * chunk id, so a spec naming one that is not there means the caller and the
+ * plan disagree — and quietly reviewing the rest bills for chunks nobody chose.
+ */
+function whyNot (r, available, noun) {
+  const list = available.length ? available.join(', ') : '(none)'
+  if (r.malformed) return `could not read --chunks — try 1, 1-3, 1,4, or all\n${noun}: ${list}`
+  if (r.unknown.length) return `no ${noun} chunk with id ${r.unknown.join(', ')}\n${noun}: ${list}`
+  if (!r.ids.length) return `--chunks selected nothing\n${noun}: ${list}`
+  return null
+}
+
 async function cmdPlan (L, v) {
   if (lockHolder(L)?.alive) { say(c.red('a run is in flight — `curc stop` first')); return 6 }
   const prev = readLedger(L)
@@ -126,7 +141,14 @@ function cmdStatus (L, v) {
 
 function cmdFindings (L, v) {
   const ledger = readLedger(L)
-  const ids = v.chunks ? v.chunks.split(',').map(Number) : null
+  const done = (ledger?.archive ?? []).map(a => a.id)
+  let ids = null
+  if (v.chunks) {
+    const r = resolveIds(v.chunks, done)
+    const bad = whyNot(r, done, 'reviewed')
+    if (bad) { say(c.red(bad)); return 2 }
+    ids = r.ids
+  }
   const all = collectFindings(L, ledger, ids)
   if (v.json) { out(JSON.stringify(all, null, 2)); return 0 }
   say(`${all.length} finding(s)`)
@@ -146,10 +168,16 @@ async function cmdRun (L, v) {
   if (lockHolder(L)?.alive) { say(c.red('a run is already in flight — `curc status`')); return 6 }
 
   const rows = statusRows(L, ledger)
-  const ids = v.chunks
-    ? (v.chunks === 'all' ? rows.map(r => r.id) : parseSpec(v.chunks, rows.length).map(i => rows[i].id))
-    : null
-  if (!ids?.length) { say(c.red('which chunks? pass --chunks (e.g. --chunks 1-3, --chunks all)')); return 5 }
+  const planned = rows.map(r => r.id)
+  if (!v.chunks) {
+    say(c.red('which chunks? pass --chunks (e.g. --chunks 1-3, --chunks all)'))
+    say(c.dim(`planned: ${planned.join(', ')}`))
+    return 5
+  }
+  const picked = resolveIds(v.chunks, planned)
+  const bad = whyNot(picked, planned, 'planned')
+  if (bad) { say(c.red(bad)); return 2 }
+  const ids = picked.ids
 
   if (v['dry-run']) {
     for (const id of ids) {

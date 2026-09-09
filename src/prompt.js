@@ -71,7 +71,13 @@ export async function toggleList (title, items, { render, selected = new Set() }
   }
 }
 
-/** "1,3", "2-5", "all" → zero-based indices. */
+/**
+ * "1,3", "2-5", "all" → zero-based *positions*.
+ *
+ * Positions are what a numbered menu means, so this is what `toggleList` uses.
+ * Anything addressing chunks wants `resolveIds` instead: chunk ids are
+ * monotonic across re-plans and stop matching positions the moment one happens.
+ */
 export function parseSpec (spec, len) {
   if (spec === 'all') return [...Array(len).keys()]
   const picked = new Set()
@@ -79,11 +85,50 @@ export function parseSpec (spec, len) {
     const m = /^(\d+)\s*-\s*(\d+)$/.exec(part)
     if (m) {
       const [a, b] = [Number(m[1]), Number(m[2])].sort((x, y) => x - y)
-      for (let i = a; i <= b; i++) if (i >= 1 && i <= len) picked.add(i - 1)
+      for (let i = Math.max(a, 1); i <= Math.min(b, len); i++) picked.add(i - 1)
     } else if (/^\d+$/.test(part)) {
       const i = Number(part)
       if (i >= 1 && i <= len) picked.add(i - 1)
     } else return []
   }
   return [...picked].sort((a, b) => a - b)
+}
+
+/**
+ * "1,3", "2-5", "all" → chunk ids, plus whatever named no chunk.
+ *
+ * Ids, never positions. Every table curc prints is headed by the chunk id, so
+ * the number a person reads off the screen has to be the number that selects
+ * that chunk. An id that is not in the plan is an error rather than a silent
+ * substitution, because the substitution bills a review of something they did
+ * not pick.
+ */
+export function resolveIds (spec, availableIds) {
+  const available = new Set(availableIds)
+  const s = String(spec ?? '').trim().toLowerCase()
+  if (!s) return { ids: [], unknown: [], malformed: true }
+  if (s === 'all') return { ids: [...availableIds].sort((a, b) => a - b), unknown: [] }
+
+  const ids = new Set()
+  const unknown = new Set()
+
+  for (const part of s.split(',').map(x => x.trim()).filter(Boolean)) {
+    const m = /^(\d+)\s*-\s*(\d+)$/.exec(part)
+    if (m) {
+      const [a, b] = [Number(m[1]), Number(m[2])].sort((x, y) => x - y)
+      // A range names the ids inside it; it is not licence to walk a span far
+      // wider than the plan, which is how "1-99999999" became a minute of
+      // counting.
+      if (b - a > Math.max(available.size, 1000)) return { ids: [], unknown: [], malformed: true }
+      let hit = false
+      for (let i = a; i <= b; i++) if (available.has(i)) { ids.add(i); hit = true }
+      if (!hit) unknown.add(part)
+    } else if (/^\d+$/.test(part)) {
+      const n = Number(part)
+      if (available.has(n)) ids.add(n); else unknown.add(n)
+    } else {
+      return { ids: [], unknown: [], malformed: true }
+    }
+  }
+  return { ids: [...ids].sort((a, b) => a - b), unknown: [...unknown] }
 }

@@ -10,7 +10,7 @@ import { statusRows, doneRows, collectFindings } from './report.js'
 import { launch, stopAll } from './supervisor.js'
 import { dropPair, listRefs } from './branches.js'
 import { removeWorktree } from './worktree.js'
-import { menu, confirm, toggleList, parseSpec, ask, closePrompt, isTTY } from './prompt.js'
+import { menu, confirm, toggleList, resolveIds, ask, closePrompt, isTTY } from './prompt.js'
 import { c, say, out, num, table, paintStatus, costBand } from './ui.js'
 
 const MAX_PER_LAUNCH = 3
@@ -172,10 +172,20 @@ async function doReview (L, ledger) {
   if (!pre.ok) { renderPreflight(pre); return ledger }
 
   say('')
-  say(c.dim(`  Pick up to ${MAX_PER_LAUNCH} chunks. Each one is a separate cloud review.`))
-  const spec = await ask(`  chunks (e.g. "1", "1-3", "1,4")`)
-  const picked = parseSpec(spec.toLowerCase(), rows.length).slice(0, MAX_PER_LAUNCH).map(i => rows[i])
+  say(c.dim(`  Pick up to ${MAX_PER_LAUNCH} chunks by the # in the table above.`))
+  const spec = await ask(`  chunks (e.g. "${rows[0].id}", "${rows[0].id}-${rows[Math.min(2, rows.length - 1)].id}")`)
+  const byId = new Map(rows.map(r => [r.id, r]))
+  const sel = resolveIds(spec, [...byId.keys()])
+  if (sel.malformed) { say(c.yellow('  could not read that — try 3, 3-5, 3,7, or all')); return ledger }
+  if (sel.unknown.length) {
+    say(c.yellow(`  no pending chunk with id ${sel.unknown.join(', ')} — the # column is the id`))
+    return ledger
+  }
+  const picked = sel.ids.slice(0, MAX_PER_LAUNCH).map(id => byId.get(id))
   if (!picked.length) { say(c.yellow('  nothing selected')); return ledger }
+  if (sel.ids.length > MAX_PER_LAUNCH) {
+    say(c.dim(`  taking the first ${MAX_PER_LAUNCH} of ${sel.ids.length}: ${picked.map(r => r.id).join(', ')}`))
+  }
 
   say('')
   out(table(

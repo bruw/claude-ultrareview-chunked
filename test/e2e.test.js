@@ -4,7 +4,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { spawnSync } from 'node:child_process'
-import { tmpRepo, lines, cleanup } from './helpers/tmprepo.js'
+import { tmpRepo, write, lines, cleanup } from './helpers/tmprepo.js'
 import { layout } from '../src/paths.js'
 import { readLedger, readRun, runState, TERMINAL } from '../src/ledger.js'
 
@@ -140,5 +140,58 @@ test('concurrency never exceeds three', async () => {
   for (let i = 0; i + 3 < starts.length; i++) {
     assert.ok(starts[i + 3] - starts[i] >= 250, `four reviews started within ${starts[i + 3] - starts[i]}ms`)
   }
+  cleanup(dir)
+})
+
+/**
+ * Chunk ids are monotonic across re-plans and stop matching list positions the
+ * moment one happens. Every table curc prints is headed by the id, so the id is
+ * what --chunks has to mean — selecting by position billed a review of a chunk
+ * the user could not even name.
+ */
+test('--chunks names chunk ids, not positions in the list', async () => {
+  const { dir, git } = tmpRepo({ 'a/1.js': lines(20, 'a'), 'b/1.js': lines(20, 'b') })
+  const L = layout(dir)
+  const first = JSON.parse(curc(dir, ['plan', '--json', '--max-lines', '25']).out)
+  assert.deepEqual(first.chunks.map(c => c.id), [1, 2])
+  assert.equal(curc(dir, ['run', '--chunks', 'all', '--yes']).code, 0)
+  await settle(L, first.chunks.map(c => c.id))
+
+  write(dir, { 'c/1.js': lines(20, 'c'), 'd/1.js': lines(20, 'd') })
+  git('add', '-A'); git('commit', '-qm', 'more')
+  const next = JSON.parse(curc(dir, ['plan', '--json', '--max-lines', '25']).out)
+  assert.deepEqual(next.chunks.map(c => c.id), [3, 4], 'ids are never reused')
+
+  // The id on screen selects that chunk…
+  const byId = curc(dir, ['run', '--chunks', '3', '--dry-run'])
+  assert.equal(byId.code, 0)
+  assert.match(byId.out, /^chunk 3:/m)
+
+  // …and an id that is not in the plan is refused, not quietly swapped.
+  const log = path.join(dir, 'argv.log')
+  const stale = curc(dir, ['run', '--chunks', '1', '--yes'], { FAKE_CLAUDE_ARGV_LOG: log })
+  assert.equal(stale.code, 2)
+  assert.match(stale.err, /no planned chunk with id 1/)
+  assert.match(stale.err, /planned: 3, 4/)
+  assert.ok(!fs.existsSync(log), 'an unknown id must not bill anything')
+  cleanup(dir)
+})
+
+test('findings --chunks speaks the same ids, and understands "all"', async () => {
+  const { dir } = repo()
+  const L = layout(dir)
+  const plan = JSON.parse(curc(dir, ['plan', '--json', '--max-lines', '40']).out)
+  assert.equal(curc(dir, ['run', '--chunks', 'all', '--yes']).code, 0)
+  await settle(L, plan.chunks.map(c => c.id))
+
+  const all = JSON.parse(curc(dir, ['findings', '--json', '--chunks', 'all']).out)
+  assert.equal(all.length, plan.chunks.length, '"all" used to parse as NaN and match nothing')
+
+  const one = JSON.parse(curc(dir, ['findings', '--json', '--chunks', String(plan.chunks[0].id)]).out)
+  assert.deepEqual(one.map(f => f._curc.chunkId), [plan.chunks[0].id])
+
+  const bad = curc(dir, ['findings', '--json', '--chunks', '999'])
+  assert.equal(bad.code, 2)
+  assert.match(bad.err, /no reviewed chunk with id 999/)
   cleanup(dir)
 })
