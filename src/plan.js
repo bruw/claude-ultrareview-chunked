@@ -10,7 +10,7 @@ import { emptyLedger, coverageStats } from './ledger.js'
 export async function survey (root, { include = [], exclude = [], maxFiles = DEFAULT_MAX_FILES, maxLines = DEFAULT_MAX_LINES, reviewed = {} } = {}) {
   const snapshot = headSha(root)
   const snapshotTree = treeOf(root, snapshot)
-  const { files, dropped } = await collectFiles(root, { include, exclude, maxLines })
+  const { files, dropped } = await collectFiles(root, { commit: snapshot, include, exclude, maxLines })
   return {
     snapshot,
     snapshotTree,

@@ -1,5 +1,5 @@
 import path from 'node:path'
-import { lsFilesStaged, measureBlobs, MODE_GITLINK, MODE_SYMLINK } from './git.js'
+import { lsTree, measureBlobs, MODE_GITLINK, MODE_SYMLINK } from './git.js'
 
 /**
  * Paths that cost review budget and return nothing: binaries by extension,
@@ -57,13 +57,14 @@ export function matchesAny (p, globs) {
 }
 
 /**
- * Everything tracked under `include`, minus what is excluded, binary, or too
- * big to fit in any chunk. Returns the survivors plus why each casualty fell,
- * so the UI can show its work instead of silently shrinking the scope.
+ * Everything in `commit`'s tree under `include`, minus what is excluded,
+ * binary, or too big to fit in any chunk. Returns the survivors plus why each
+ * casualty fell, so the UI can show its work instead of silently shrinking
+ * the scope.
  */
-export async function collectFiles (root, { include = [], exclude = [], maxLines }) {
+export async function collectFiles (root, { commit = 'HEAD', include = [], exclude = [], maxLines }) {
   const globs = [...DEFAULT_EXCLUDES, ...exclude]
-  const tracked = lsFilesStaged(root, include)
+  const tracked = lsTree(root, commit, include)
 
   const kept = []
   const dropped = { excluded: [], submodule: [], symlink: [], binary: [], oversize: [], unreadable: [] }

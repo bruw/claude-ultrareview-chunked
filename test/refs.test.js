@@ -181,3 +181,35 @@ test('the stray-ref check runs for plan, not only when claude is probed', async 
   assert.match(refs.remedy, /curc clean --yes/)
   cleanup(dir)
 })
+
+/**
+ * The pairs are built from HEAD's tree, so the plan must come from it too.
+ * It used to come from the index: a staged edit was measured and chunked at
+ * its staged size, the review saw the committed content, and coverage was
+ * recorded under the staged blob — so once committed, the edit was "covered"
+ * without a reviewer ever having seen it. A staged new file broke the pair's
+ * own proof instead, for every chunk it landed in.
+ */
+test('the plan is HEAD, not the index: staged edits, additions and removals are ignored', async () => {
+  const { dir, git } = tmpRepo({ 'src/a.js': lines(20, 'a'), 'src/b.js': lines(20, 'b') })
+  const headA = git('rev-parse', 'HEAD:src/a.js').stdout.trim()
+
+  fs.writeFileSync(path.join(dir, 'src/a.js'), lines(50, 'a'))
+  fs.writeFileSync(path.join(dir, 'src/new.js'), lines(10, 'n'))
+  git('add', 'src/a.js', 'src/new.js')
+  git('rm', '-q', '--cached', 'src/b.js')
+
+  const plan = JSON.parse(curcBin(dir, ['plan', '--json']).stdout)
+  const paths = plan.chunks.flatMap(c => c.paths).sort()
+  assert.deepEqual(paths, ['src/a.js', 'src/b.js'], 'staged additions and removals are not in HEAD')
+  assert.equal(plan.totals.lines, 40, 'a staged edit is measured at its committed size')
+
+  const L = layout(dir)
+  const ledger = JSON.parse(fs.readFileSync(L.ledger, 'utf8'))
+  const a = ledger.chunks[0].files.find(f => f.path === 'src/a.js')
+  assert.equal(a.blob, headA, 'coverage will be keyed by the committed blob')
+
+  // And the pair still proves, with the index in this state.
+  assert.equal(curcBin(dir, ['run', '--chunks', 'all', '--yes', '--dry-run']).status, 0)
+  cleanup(dir)
+})

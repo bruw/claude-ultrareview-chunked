@@ -46,19 +46,24 @@ export const MODE_GITLINK = '160000'
 export const MODE_SYMLINK = '120000'
 
 /**
- * Tracked entries with their object ids: [{ path, blob, mode }].
+ * Every entry in a commit's tree, with its object id: [{ path, blob, mode }].
  *
- * The mode is kept rather than discarded because it is the only reliable way
- * to recognise a submodule: `ls-files -s` reports a gitlink's *commit* sha in
- * the object column, and that commit is absent from the superproject after an
- * ordinary `git clone` — the exact shape that used to desync measureBlobs.
+ * The tree of the snapshot commit, never the index. The chunk pairs are built
+ * from that tree, so the plan has to be too: reading `ls-files -s` instead
+ * meant a staged edit was measured, chunked, and recorded as covered under
+ * its *staged* blob while the review saw the committed one — and a staged
+ * new file made every pair containing it fail its own proof.
+ *
+ * The mode is kept because it is the only reliable way to recognise a
+ * submodule: a gitlink's object column holds a *commit* sha that is absent
+ * from the superproject after an ordinary clone.
  */
-export function lsFilesStaged (cwd, paths = []) {
-  const out = git(['ls-files', '-s', '-z', '--', ...paths], { cwd })
+export function lsTree (cwd, commit, paths = []) {
+  const out = git(['ls-tree', '-r', '-z', commit, '--', ...paths], { cwd })
   return out.split('\0').filter(Boolean).map(rec => {
-    // "<mode> <blob> <stage>\t<path>"
+    // "<mode> <type> <object>\t<path>"
     const tab = rec.indexOf('\t')
-    const [mode, blob] = rec.slice(0, tab).split(' ')
+    const [mode, , blob] = rec.slice(0, tab).split(' ')
     return { path: rec.slice(tab + 1), blob, mode }
   })
 }

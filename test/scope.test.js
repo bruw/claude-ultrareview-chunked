@@ -56,6 +56,8 @@ function repoWithGitlink (extra = {}, { gitlinkLast = false } = {}) {
   // A gitlink whose commit is deliberately not in this object store.
   git('update-index', '--add', '--cacheinfo',
     `160000,0000000000000000000000000000000000000001,${gitlinkLast ? 'zz-sub' : 'sub'}`)
+  // The survey reads HEAD's tree, so the gitlink has to be committed to count.
+  git('commit', '-qm', 'add gitlink')
   return dir
 }
 
