@@ -203,11 +203,14 @@ async function doReview (L, ledger) {
     return ledger
   }
 
-  const { runId, pid } = launch(L, {
+  const started = launch(L, {
     chunkIds: picked.map(r => r.id),
     concurrency: Math.min(MAX_PER_LAUNCH, picked.length),
     timeout: DEFAULT_TIMEOUT_MIN
   })
+  if (!started.ok) { say(c.red(`\n  ${started.remedy ?? started.reason}`)); return ledger }
+
+  const { runId, pid } = started
   say(c.green(`\n  started ${runId}`) + c.dim(` (supervisor pid ${pid})`))
   say(c.dim('  Reviews take 5–10 minutes each and keep running if you quit.'))
   return readLedger(L) ?? ledger

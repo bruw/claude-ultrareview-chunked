@@ -67,8 +67,13 @@ export function runState (rec) {
   if (!rec) return 'pending'
   if (rec.finishedAt) {
     if (rec.exitCode === 0) return 'done'
-    if (rec.exitCode === 130) return 'interrupted'
+    // The watchdog says so explicitly, and it must be asked first: killing a
+    // review looks exactly like any other signalled death from the outside.
     if (rec.reason === 'timeout') return 'timeout'
+    // Stopped, rather than broken. SIGINT exits 130, but `curc stop` sends
+    // SIGTERM — 143, or no code at all and a signal instead, depending on how
+    // the child was reaped.
+    if (rec.signal || rec.exitCode === 130 || rec.exitCode === 143) return 'interrupted'
     return 'failed'
   }
   if (rec.startedAt) return isAlive(rec.supervisorPid) ? 'running' : 'orphaned'

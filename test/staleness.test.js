@@ -6,7 +6,8 @@ import { fileURLToPath } from 'node:url'
 import { spawnSync } from 'node:child_process'
 import { tmpRepo, lines, cleanup } from './helpers/tmprepo.js'
 import { layout } from '../src/paths.js'
-import { readLedger, readRun, runState, TERMINAL, classifyChunk } from '../src/ledger.js'
+import { readLedger, classifyChunk } from '../src/ledger.js'
+import { settle } from './helpers/settle.js'
 
 const BIN = fileURLToPath(new URL('../bin/curc.js', import.meta.url))
 const FAKE = fileURLToPath(new URL('./helpers/fake-claude.js', import.meta.url))
@@ -15,14 +16,6 @@ const curc = (dir, args) => spawnSync(process.execPath, [BIN, ...args], {
   cwd: dir, encoding: 'utf8', env: { ...process.env, CURC_CLAUDE_BIN: FAKE, NO_COLOR: '1' }
 })
 
-async function settle (L, ids, ms = 30000) {
-  const until = Date.now() + ms
-  while (Date.now() < until) {
-    if (ids.every(id => TERMINAL.has(runState(readRun(L, id))))) return readLedger(L)
-    await new Promise(r => setTimeout(r, 100))
-  }
-  throw new Error('supervisor did not settle')
-}
 
 /** Plan, review everything, and hand back the ledger with coverage recorded. */
 async function sweep (dir) {

@@ -12,6 +12,7 @@ export function layout (root) {
     ledger: path.join(home, 'ledger.json'),
     lock: path.join(home, 'supervisor.lock'),
     runs: path.join(home, 'runs'),
+    queues: path.join(home, 'queues'),
     findings: path.join(home, 'findings'),
     logs: path.join(home, 'logs'),
     tmp: path.join(home, 'tmp'),
@@ -26,7 +27,7 @@ export function layout (root) {
 }
 
 export function ensureDirs (L) {
-  for (const d of [L.home, L.runs, L.findings, L.logs, L.tmp]) fs.mkdirSync(d, { recursive: true })
+  for (const d of [L.home, L.runs, L.queues, L.findings, L.logs, L.tmp]) fs.mkdirSync(d, { recursive: true })
 }
 
 /**

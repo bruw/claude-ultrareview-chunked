@@ -91,12 +91,12 @@ function finish (checks) {
 
 const p = id => String(id).padStart(4, '0')
 
-export function lockHolder (L) {
-  try {
-    const rec = JSON.parse(fs.readFileSync(L.lock, 'utf8'))
-    const age = (Date.now() - fs.statSync(L.lock).mtimeMs) / 1000
-    let alive = false
-    try { process.kill(rec.pid, 0); alive = true } catch (e) { alive = e.code === 'EPERM' }
-    return { ...rec, alive: alive && age < 60, heartbeatAgeSec: Math.round(age) }
-  } catch { return null }
-}
+/**
+ * Who holds the run lock. One implementation, in `lock.js`.
+ *
+ * This used to be a second, subtly different copy of the predicate in
+ * `supervisor.js` — and the two disagreeing about whether a stalled supervisor
+ * counts as running is what let `plan` and `clean --yes` delete branches and
+ * worktrees out from under a review that was still going.
+ */
+export { lockState as lockHolder } from './lock.js'

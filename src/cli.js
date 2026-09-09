@@ -5,7 +5,7 @@ import { readLedger, writeLedger, runState } from './ledger.js'
 import { survey, planFrom, drift } from './plan.js'
 import { preflight, lockHolder } from './preflight.js'
 import { snapshot as statusSnapshot, statusRows, collectFindings } from './report.js'
-import { launch, supervise, stopAll, MAX_CONCURRENCY, DEFAULT_TIMEOUT_MIN } from './supervisor.js'
+import { launch, supervise, stopAll, unlock, MAX_CONCURRENCY, DEFAULT_TIMEOUT_MIN } from './supervisor.js'
 import { buildPair, dropPair, pairSize, listRefs } from './branches.js'
 import { removeWorktree } from './worktree.js'
 import { reviewArgv } from './claude.js'
@@ -70,6 +70,7 @@ export async function main (argv) {
     case 'run': return cmdRun(L, v)
     case 'stop': return cmdStop(L, v)
     case 'clean': return cmdClean(L, v)
+    case 'unlock': return cmdUnlock(L, v)
     default:
       say(c.red(`unknown command: ${cmd}`))
       usage()
@@ -234,13 +235,37 @@ async function cmdRun (L, v) {
     return 5
   }
 
-  const { runId, pid } = launch(L, {
+  const started = launch(L, {
     chunkIds: ids,
     concurrency: intArg('concurrency', v.concurrency, { min: 1, max: MAX_CONCURRENCY, fallback: MAX_CONCURRENCY }),
     timeout: intArg('timeout', v.timeout, { min: 1, fallback: DEFAULT_TIMEOUT_MIN })
   })
+  if (!started.ok) { say(c.red(started.remedy ?? started.reason)); return 6 }
+
+  const { runId, pid } = started
   if (v.json) out(JSON.stringify({ runId, supervisorPid: pid, chunks: ids, costEstimateUsd: costRange(ids.length) }, null, 2))
   else say(c.green(`started ${runId}`) + c.dim(` (pid ${pid}) — \`curc status\` to follow`))
+  return 0
+}
+
+/**
+ * Clear a lock nobody is using.
+ *
+ * curc never reclaims a lock on its own: the check-then-unlink that would be
+ * needed cannot be made atomic, and two supervisors both deciding a lock is
+ * stale is a double-billed sweep. So a wedged repo is cleared here, by someone
+ * who can see the holder is gone.
+ */
+function cmdUnlock (L, v) {
+  const held = lockHolder(L)
+  if (!held) { say(c.dim('no lock to clear')); return 0 }
+  if (held.alive && !v.yes) {
+    say(c.red(`run ${held.runId ?? '?'} still looks alive (pid ${held.pid ?? '?'}, heartbeat ${held.heartbeatAgeSec}s ago)`))
+    say('`curc stop` first — or `curc unlock --yes` if you are certain it is gone.')
+    return 6
+  }
+  const r = unlock(L)
+  say(r.removed ? c.yellow(`cleared the lock from ${r.holder.runId ?? 'an earlier run'}`) : c.dim(r.reason))
   return 0
 }
 

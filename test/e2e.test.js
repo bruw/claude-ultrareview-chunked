@@ -6,7 +6,8 @@ import { fileURLToPath } from 'node:url'
 import { spawnSync } from 'node:child_process'
 import { tmpRepo, write, lines, cleanup } from './helpers/tmprepo.js'
 import { layout } from '../src/paths.js'
-import { readLedger, readRun, runState, TERMINAL } from '../src/ledger.js'
+import { readLedger, readRun, runState } from '../src/ledger.js'
+import { settle } from './helpers/settle.js'
 
 const BIN = fileURLToPath(new URL('../bin/curc.js', import.meta.url))
 const FAKE = fileURLToPath(new URL('./helpers/fake-claude.js', import.meta.url))
@@ -28,21 +29,6 @@ function repo () {
   })
 }
 
-/**
- * The supervisor is detached, so tests wait on the filesystem exactly as
- * `status` does. Waiting on the lock file would race: it does not exist yet in
- * the moment between `run` returning and the supervisor starting.
- */
-async function settle (L, ids, ms = 30000) {
-  const until = Date.now() + ms
-  while (Date.now() < until) {
-    const done = ids.filter(id => TERMINAL.has(runState(readRun(L, id))))
-    if (done.length === ids.length) return readLedger(L)
-    await new Promise(r => setTimeout(r, 100))
-  }
-  const states = ids.map(id => `${id}:${runState(readRun(L, id))}`).join(' ')
-  throw new Error(`supervisor did not settle — ${states}`)
-}
 
 test('plan is free and reports what it dropped', () => {
   const { dir } = repo()
