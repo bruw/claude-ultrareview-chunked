@@ -1,5 +1,5 @@
 {
-  "name": "curc",
+  "name": "claude-ultrareview-chunked",
   "version": "0.3.0",
   "description": "Chunked ultrareview: slice a whole codebase into diff-sized pieces and run a Claude Code ultrareview over each one.",
   "keywords": [
@@ -21,7 +21,7 @@
   },
   "type": "module",
   "bin": {
-    "curc": "./bin/curc.js"
+    "curc": "bin/curc.js"
   },
   "files": [
     "bin",

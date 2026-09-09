@@ -29,7 +29,7 @@ billed, it refuses and names the flag, it does not guess.
 any ref outside `refs/heads/curc/`. `test/refs.test.js` enforces this byte-for-byte;
 if your change makes it fail, the change is wrong, not the test.
 
-**No runtime dependencies.** `package.json` has none and `npx -y curc@latest` is the
+**No runtime dependencies.** `package.json` has none and `npx -y claude-ultrareview-chunked@latest` is the
 install path. If you need something, write it; if it is too big to write, it is
 probably too big for curc.
 

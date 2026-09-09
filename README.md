@@ -54,9 +54,11 @@ before a review is allowed to start.
 ## Install
 
 ```bash
-npx -y curc@latest      # nothing to install
-npm i -g curc           # or keep it on PATH
+npx -y claude-ultrareview-chunked@latest   # nothing to install
+npm i -g claude-ultrareview-chunked        # or keep it on PATH
 ```
+
+The package installs one command, `curc`.
 
 You need Node 20+, git, and a Claude Code that is logged in to a claude.ai account
 (ultrareview does not work on API keys). curc checks all of that before it spends
