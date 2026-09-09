@@ -1,7 +1,7 @@
 import { parseArgs } from 'node:util'
 import { repoRoot } from './git.js'
 import { layout, ensureDirs } from './paths.js'
-import { readLedger, writeLedger, runState } from './ledger.js'
+import { readLedger, writeLedger, runState, ledgerStatus } from './ledger.js'
 import { survey, planFrom, drift } from './plan.js'
 import { preflight, lockHolder } from './preflight.js'
 import { snapshot as statusSnapshot, statusRows, collectFindings } from './report.js'
@@ -29,6 +29,7 @@ const OPTIONS = {
   concurrency: { type: 'string' },
   timeout: { type: 'string' },
   'dry-run': { type: 'boolean' },
+  force: { type: 'boolean' },
   yes: { type: 'boolean' },
   all: { type: 'boolean' }
 }
@@ -165,9 +166,26 @@ async function cmdPlan (L, v) {
   return 0
 }
 
+/**
+ * "No plan yet" and "a plan this build cannot read" are not the same news —
+ * the second is a sweep somebody paid for, and saying nothing about it is how
+ * a coverage record looks like it evaporated.
+ */
+function noLedger (L) {
+  const st = ledgerStatus(L)
+  if (st.state === 'version-mismatch') {
+    return `the ledger here is version ${st.found ?? '?'} and this curc writes ${st.expected}, ` +
+      'so its coverage cannot be read — `curc plan` will start a fresh one'
+  }
+  if (st.state === 'unreadable') {
+    return 'the ledger here could not be parsed — `curc plan` will start a fresh one'
+  }
+  return 'no plan yet — run `curc plan`'
+}
+
 function cmdStatus (L, v) {
   const ledger = readLedger(L)
-  if (!ledger) { say(c.yellow('no plan yet — run `curc plan`')); return 0 }
+  if (!ledger) { say(c.yellow(noLedger(L))); return 0 }
   const snap = statusSnapshot(L, ledger)
   if (v.json) { out(JSON.stringify(snap, null, 2)); return 0 }
   out(table(['#', 'files', 'lines', 'area', 'status'],
@@ -216,6 +234,21 @@ async function cmdRun (L, v) {
   const bad = whyNot(picked, planned, 'planned')
   if (bad) { say(c.red(bad)); return 2 }
   const ids = picked.ids
+
+  // A chunk that is running, queued, or orphaned may already have been paid
+  // for — an orphan in particular is a review whose supervisor died while it
+  // was in flight, and the cloud side does not care that curc lost track. The
+  // claim file will refuse the spend anyway, but saying so here is better than
+  // watching a chunk come back "already-claimed".
+  if (!v.force) {
+    const risky = rows.filter(r => ids.includes(r.id) && ['running', 'queued', 'orphaned'].includes(r.state))
+    if (risky.length) {
+      say(c.red(`${risky.length} chunk(s) may already have been billed:`))
+      for (const r of risky) say(`  ${r.label}  ${r.state}`)
+      say('`curc status` to look, or --force to review them again anyway.')
+      return 6
+    }
+  }
 
   if (v['dry-run']) {
     for (const id of ids) {

@@ -219,9 +219,11 @@ test('run ids do not collide within the same second', () => {
   curc(dir, ['plan', '--json', '--max-lines', '25'])
 
   // Two ids minted back to back; the timestamp alone has one-second resolution.
+  // --force because the first launch leaves its chunks in flight, which the
+  // may-already-be-billed guard is quite right to refuse on the second pass.
   const ids = new Set()
   for (let i = 0; i < 2; i++) {
-    const r = JSON.parse(curc(dir, ['run', '--chunks', 'all', '--yes', '--json']).out)
+    const r = JSON.parse(curc(dir, ['run', '--chunks', 'all', '--yes', '--force', '--json']).out)
     ids.add(r.runId)
     stopAll(L)
     fs.rmSync(L.lock, { force: true })

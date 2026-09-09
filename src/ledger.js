@@ -27,6 +27,23 @@ export function readLedger (L) {
   } catch { return null }
 }
 
+/**
+ * Why there is no usable ledger, when there isn't one.
+ *
+ * `readLedger` collapses "never planned" and "planned by a different version"
+ * into the same null, which turned a sweep's whole coverage history into "no
+ * plan yet — run `curc plan`". The difference is worth a sentence: one is a
+ * fresh start, the other is a record the user paid for.
+ */
+export function ledgerStatus (L) {
+  let raw
+  try { raw = fs.readFileSync(L.ledger, 'utf8') } catch { return { state: 'absent' } }
+  let parsed
+  try { parsed = JSON.parse(raw) } catch { return { state: 'unreadable' } }
+  if (parsed.version === LEDGER_VERSION) return { state: 'ok' }
+  return { state: 'version-mismatch', found: parsed.version ?? null, expected: LEDGER_VERSION }
+}
+
 export function writeLedger (L, ledger) {
   ledger.updatedAt = new Date().toISOString()
   writeJsonAtomic(L.ledger, ledger)

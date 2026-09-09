@@ -17,6 +17,7 @@ export function statusRows (L, ledger) {
       area: chunkLabel(ch),
       coverage: classifyChunk(ch, ledger.reviewed),
       state: runState(run),
+      findingsParsed: run?.findingsParsed ?? null,
       run
     }
   })
@@ -32,6 +33,9 @@ export function doneRows (L, ledger) {
       lines: a.lines,
       area: chunkLabel(a),
       findings: run?.findingCount ?? null,
+      // Exit 0 with a payload nobody could parse still counts as covered, so
+      // that nothing silently re-bills — but it is not a clean result either.
+      findingsParsed: run?.findingsParsed ?? null,
       sessionUrl: run?.sessionUrl ?? null,
       at: run?.finishedAt ?? a.at
     }

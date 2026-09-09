@@ -12,8 +12,8 @@ import { settle } from './helpers/settle.js'
 const BIN = fileURLToPath(new URL('../bin/curc.js', import.meta.url))
 const FAKE = fileURLToPath(new URL('./helpers/fake-claude.js', import.meta.url))
 
-const curc = (dir, args) => spawnSync(process.execPath, [BIN, ...args], {
-  cwd: dir, encoding: 'utf8', env: { ...process.env, CURC_CLAUDE_BIN: FAKE, NO_COLOR: '1' }
+const curc = (dir, args, env = {}) => spawnSync(process.execPath, [BIN, ...args], {
+  cwd: dir, encoding: 'utf8', env: { ...process.env, CURC_CLAUDE_BIN: FAKE, NO_COLOR: '1', ...env }
 })
 
 
@@ -99,4 +99,66 @@ test('coverage is keyed by content, so an identical file elsewhere counts as rev
   const chunk = { files: [{ path: 'x/new.js', blob: 'deadbeef', lines: 3 }] }
   assert.equal(classifyChunk(chunk, { deadbeef: { path: 'y/old.js' } }), 'covered')
   assert.equal(classifyChunk(chunk, {}), 'new')
+})
+
+/**
+ * Exit 0 with a payload nobody can parse still counts as coverage — gating it
+ * would quietly re-bill the chunk on the next plan. But it is not a clean
+ * result either, so it has to be visible rather than showing up as a reviewed
+ * chunk with "?" findings.
+ */
+test('an unparseable payload still covers, and says so', async () => {
+  const { dir } = tmpRepo({ 'src/a.js': lines(20, 'a') })
+  const L = layout(dir)
+  const plan = JSON.parse(curc(dir, ['plan', '--json']).stdout)
+  const id = plan.chunks[0].id
+  assert.equal(curc(dir, ['run', '--chunks', 'all', '--yes'], { FAKE_CLAUDE_MODE: 'garbage' }).status, 0)
+  await settle(L, [id])
+
+  const ledger = readLedger(L)
+  assert.equal(Object.keys(ledger.reviewed).length, 1, 'coverage is kept, so nothing silently re-bills')
+
+  const status = JSON.parse(curc(dir, ['status', '--json']).stdout)
+  const done = status.completed.find(r => r.id === id)
+  assert.equal(done.findingsParsed, false, 'but the payload failure is on the record')
+  assert.equal(done.findings, null)
+
+  // A re-plan must not propose it again — that is what "still covers" means.
+  assert.equal(JSON.parse(curc(dir, ['plan', '--json']).stdout).chunks.length, 0)
+  cleanup(dir)
+})
+
+test('a chunk that may already have been billed is not re-run without --force', async () => {
+  const { dir } = tmpRepo({ 'src/a.js': lines(20, 'a'), 'src/b.js': lines(20, 'b') })
+  const L = layout(dir)
+  const plan = JSON.parse(curc(dir, ['plan', '--json']).stdout)
+  const id = plan.chunks[0].id
+
+  // An orphan: a review whose supervisor died while it was in flight. The
+  // cloud side does not care that curc lost track, so it may already be paid.
+  const { writeRun } = await import('../src/ledger.js')
+  writeRun(L, id, { chunkId: id, runId: 'r-gone', startedAt: new Date().toISOString(), supervisorPid: 2 ** 30 })
+
+  const refused = curc(dir, ['run', '--chunks', String(id), '--yes'])
+  assert.equal(refused.status, 6)
+  assert.match(refused.stderr, /may already have been billed/)
+  assert.match(refused.stderr, /--force/)
+
+  const forced = curc(dir, ['run', '--chunks', String(id), '--yes', '--force', '--dry-run'])
+  assert.equal(forced.status, 0, '--force is the documented way through')
+  cleanup(dir)
+})
+
+test('a ledger from another version says so instead of looking like a fresh repo', () => {
+  const { dir } = tmpRepo({ 'src/a.js': lines(20, 'a') })
+  const L = layout(dir)
+  curc(dir, ['plan', '--json'])
+  const l = JSON.parse(fs.readFileSync(L.ledger, 'utf8'))
+  fs.writeFileSync(L.ledger, JSON.stringify({ ...l, version: 99 }))
+
+  const r = curc(dir, ['status'])
+  assert.equal(r.status, 0)
+  assert.match(r.stderr, /version 99/)
+  assert.doesNotMatch(r.stderr, /no plan yet/, 'a paid-for record must not read as "never planned"')
+  cleanup(dir)
 })
