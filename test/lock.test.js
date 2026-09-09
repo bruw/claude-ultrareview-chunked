@@ -334,3 +334,32 @@ test('an empty lock file is held while fresh, stale once quiet, and never a stac
   assert.equal(fs.existsSync(L.lock), false, 'unlock removes a lock it cannot read')
   cleanup(dir)
 })
+
+/**
+ * `curc stop` drained the queue but left every not-yet-started chunk's record
+ * saying 'queued', with no supervisor behind it: unselectable in the guided
+ * flow, and refused on the CLI as a chunk that may already have been billed.
+ */
+test('a stop leaves never-started chunks pending, not queued forever', async () => {
+  const { dir } = tmpRepo({ 'a/1.js': lines(20, 'a'), 'b/1.js': lines(20, 'b'), 'c/1.js': lines(20, 'c') })
+  const L = layout(dir)
+  const plan = JSON.parse(curc(dir, ['plan', '--json', '--max-lines', '25']).out)
+  const ids = plan.chunks.map(c => c.id)
+
+  assert.equal(curc(dir, ['run', '--chunks', 'all', '--yes', '--concurrency', '1'], { FAKE_CLAUDE_DELAY_MS: '10000' }).code, 0)
+  const until = Date.now() + 10000
+  while (Date.now() < until && !lockState(L)?.pid) await new Promise(resolve => setTimeout(resolve, 50))
+  await new Promise(resolve => setTimeout(resolve, 400))
+  stopAll(L)
+  const gone = Date.now() + 10000
+  while (Date.now() < gone && lockState(L)) await new Promise(resolve => setTimeout(resolve, 50))
+
+  const { readRun, runState } = await import('../src/ledger.js')
+  const states = ids.map(id => runState(readRun(L, id)))
+  assert.equal(states[0], 'interrupted')
+  assert.deepEqual(states.slice(1), ['pending', 'pending'], 'chunks the stop reached first were never launched')
+
+  const again = curc(dir, ['run', '--chunks', ids.slice(1).join(','), '--yes', '--dry-run'])
+  assert.equal(again.code, 0, `never-launched chunks are not "may already have been billed": ${again.err}`)
+  cleanup(dir)
+})

@@ -16,7 +16,8 @@ export function emptyLedger () {
     scope: { include: [], exclude: [] },
     nextId: 1,
     chunks: [],
-    reviewed: {}
+    reviewed: {},
+    launched: {}
   }
 }
 
@@ -136,6 +137,28 @@ export function recordCoverage (ledger, chunk, runId) {
   for (const f of chunk.files) {
     ledger.reviewed[f.blob] = { path: f.path, chunk: chunk.id, runId, at }
   }
+}
+
+/**
+ * Content a review has been launched for, keyed by blob like coverage is.
+ *
+ * The claim file is keyed by chunk id, and a re-plan hands the same content
+ * a new id — so a chunk whose review failed came back unclaimed and was
+ * launched again with no warning and no --force. Blobs survive re-plans;
+ * chunk ids do not.
+ */
+export function recordLaunch (ledger, chunk, runId) {
+  ledger.launched ??= {}
+  const at = new Date().toISOString()
+  for (const f of chunk.files) {
+    ledger.launched[f.blob] = { path: f.path, chunk: chunk.id, runId, at }
+  }
+}
+
+/** Has any file in this chunk been sent to a review before? */
+export function launchedBefore (chunk, ledger) {
+  const launched = ledger?.launched ?? {}
+  return chunk.files.some(f => launched[f.blob])
 }
 
 export function coverageStats (files, reviewed) {

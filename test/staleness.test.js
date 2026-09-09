@@ -192,3 +192,25 @@ test('a failed chunk is refused without --force, and actually re-runs with it', 
   assert.equal(ledger.archive.length, 1, 'the forced review records coverage like any other')
   cleanup(dir)
 })
+
+/**
+ * The claim is keyed by chunk id and a re-plan mints new ids, so the same
+ * content used to come back unclaimed: one re-plan between a failed review
+ * and the next `curc run` was enough to launch it again with no --force.
+ */
+test('a re-plan does not forget that a chunk\'s content was launched before', async () => {
+  const { dir } = tmpRepo({ 'src/a.js': lines(20, 'a') })
+  const L = layout(dir)
+  const first = JSON.parse(curc(dir, ['plan', '--json']).stdout).chunks[0].id
+  curc(dir, ['run', '--chunks', String(first), '--yes'], { FAKE_CLAUDE_MODE: 'fail' })
+  await settle(L, [first])
+
+  const second = JSON.parse(curc(dir, ['plan', '--json']).stdout).chunks[0].id
+  assert.notEqual(second, first, 'a re-plan mints a new id')
+
+  const refused = curc(dir, ['run', '--chunks', String(second), '--yes'])
+  assert.equal(refused.status, 6, 'the new id still carries the old launch')
+  assert.match(refused.stderr, /may already have been billed/)
+  assert.equal(curc(dir, ['run', '--chunks', String(second), '--yes', '--force', '--dry-run']).status, 0)
+  cleanup(dir)
+})

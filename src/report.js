@@ -1,6 +1,6 @@
 import fs from 'node:fs'
 import path from 'node:path'
-import { readRun, runState, classifyChunk, isClaimed } from './ledger.js'
+import { readRun, runState, classifyChunk, isClaimed, launchedBefore } from './ledger.js'
 import { chunkLabel } from './chunker.js'
 import { pad } from './paths.js'
 import { lockHolder } from './preflight.js'
@@ -17,9 +17,10 @@ export function statusRows (L, ledger) {
       area: chunkLabel(ch),
       coverage: classifyChunk(ch, ledger.reviewed),
       state: runState(run),
-      // True once a review has been launched for it, whatever happened next.
-      // A second launch may be a second bill, so every path that spends asks.
-      claimed: isClaimed(L, ch.id),
+      // True once a review has been launched for it — or for any of its
+      // content under an earlier chunk id — whatever happened next. A second
+      // launch may be a second bill, so every path that spends asks.
+      claimed: isClaimed(L, ch.id) || launchedBefore(ch, ledger),
       findingsParsed: run?.findingsParsed ?? null,
       run
     }

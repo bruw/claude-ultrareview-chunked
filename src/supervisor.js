@@ -4,7 +4,7 @@ import { fileURLToPath } from 'node:url'
 import { spawn } from 'node:child_process'
 import { randomBytes } from 'node:crypto'
 import { layout, ensureDirs, pad } from './paths.js'
-import { readLedger, writeLedger, patchRun, writeRun, readRun, recordCoverage, runState, claimPath } from './ledger.js'
+import { readLedger, writeLedger, patchRun, writeRun, readRun, runPath, recordCoverage, recordLaunch, runState, claimPath } from './ledger.js'
 import { buildPair, dropPair, pairSize } from './branches.js'
 import { addWorktree, removeWorktree } from './worktree.js'
 import * as claude from './claude.js'
@@ -76,6 +76,7 @@ export function launch (L, { chunkIds, concurrency, timeout, force = false }) {
   if (child.pid === undefined) {
     lock.release(L, runId)
     fs.rmSync(queuePath(L, runId), { force: true })
+    for (const id of chunkIds) fs.rmSync(runPath(L, id), { force: true })
     return { ok: false, reason: 'spawn-failed', remedy: 'could not start the supervisor process' }
   }
 
@@ -157,6 +158,10 @@ export async function supervise (root, runId) {
   })
 
   clearInterval(beat)
+  // A chunk this run never started is not queued for anything any more. Its
+  // record used to stay 'queued' forever after a stop — unselectable in the
+  // guided flow, refused as possibly billed on the CLI.
+  for (const id of pending) if (runState(readRun(L, id)) === 'queued') fs.rmSync(runPath(L, id), { force: true })
   lock.release(L, runId)
   fs.rmSync(queuePath(L, runId), { force: true })
   log(L, `run ${runId} finished`)
@@ -203,6 +208,11 @@ async function runChunk (L, id, queue) {
     if (!claimChunk(L, id)) {
       log(L, `chunk ${pad(id)}: already claimed by another run; skipping`)
       return patchRun(L, id, { finishedAt: now(), exitCode: 1, reason: 'already-claimed' })
+    }
+    // The same fact as the claim, keyed by content so a re-plan cannot lose it.
+    {
+      const fresh = readLedger(L)
+      if (fresh) { recordLaunch(fresh, chunk, queue.runId); writeLedger(L, fresh) }
     }
 
     const outFd = fs.openSync(L.findingsFor(id), 'w')
