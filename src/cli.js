@@ -5,12 +5,12 @@ import { readLedger, writeLedger, runState } from './ledger.js'
 import { survey, planFrom, drift } from './plan.js'
 import { preflight, lockHolder } from './preflight.js'
 import { snapshot as statusSnapshot, statusRows, collectFindings } from './report.js'
-import { launch, supervise, stopAll } from './supervisor.js'
+import { launch, supervise, stopAll, MAX_CONCURRENCY, DEFAULT_TIMEOUT_MIN } from './supervisor.js'
 import { buildPair, dropPair, pairSize, listRefs } from './branches.js'
 import { removeWorktree } from './worktree.js'
 import { reviewArgv } from './claude.js'
 import { guided } from './app.js'
-import { c, say, out, num, table, paintStatus, costBand } from './ui.js'
+import { c, say, out, num, table, paintStatus, costBand, costRange, sanitize } from './ui.js'
 import { resolveIds } from './prompt.js'
 
 const VERSION = '0.1.0'
@@ -77,6 +77,41 @@ export async function main (argv) {
   }
 }
 
+/* ---- argument handling -------------------------------------------------- */
+
+/** A flag that failed validation, reported by name rather than as a symptom. */
+class BadFlag extends Error {
+  constructor (msg) { super(msg); this.exitCode = 2 }
+}
+
+/**
+ * An integer flag, or a refusal naming the flag.
+ *
+ * Coercing silently is how `--concurrency 0` became a supervisor that started
+ * nothing and exited without a word, and `--timeout soon` became a literal
+ * `--timeout null` on a billed command line.
+ */
+function intArg (name, raw, { min = 1, max = Infinity, fallback } = {}) {
+  if (raw === undefined) return fallback
+  const n = Number(raw)
+  if (!Number.isInteger(n) || n < min || n > max) {
+    const range = max === Infinity ? `an integer >= ${min}` : `an integer ${min}-${max}`
+    throw new BadFlag(`--${name} needs ${range}, got ${JSON.stringify(raw)}`)
+  }
+  return n
+}
+
+/**
+ * Pathspec flags accept both documented shapes: repeated flags, and one flag
+ * carrying a comma-separated list. `--scope src,tests` is what the README has
+ * always shown, and it used to be read as a single pathspec literally named
+ * "src,tests", which matches nothing and plans zero chunks without complaint.
+ */
+function pathspecs (values) {
+  if (!values) return undefined
+  return values.flatMap(v => v.split(',')).map(s => s.trim()).filter(Boolean)
+}
+
 /* ---- commands ----------------------------------------------------------- */
 
 /**
@@ -97,15 +132,17 @@ function whyNot (r, available, noun) {
 async function cmdPlan (L, v) {
   if (lockHolder(L)?.alive) { say(c.red('a run is in flight — `curc stop` first')); return 6 }
   const prev = readLedger(L)
+  const include = pathspecs(v.scope) ?? prev?.scope?.include ?? []
+  const exclude = pathspecs(v.exclude) ?? prev?.scope?.exclude ?? []
   const s = await survey(L.root, {
-    include: v.scope ?? prev?.scope?.include ?? [],
-    exclude: v.exclude ?? prev?.scope?.exclude ?? [],
-    maxFiles: v['max-files'] ? Number(v['max-files']) : undefined,
-    maxLines: v['max-lines'] ? Number(v['max-lines']) : undefined,
+    include,
+    exclude,
+    maxFiles: intArg('max-files', v['max-files']),
+    maxLines: intArg('max-lines', v['max-lines']),
     reviewed: prev?.reviewed ?? {}
   })
   for (const ch of prev?.chunks ?? []) { dropPair(L, ch.id); removeWorktree(L, ch.id) }
-  const next = planFrom(prev, s, { include: v.scope ?? prev?.scope?.include ?? [], exclude: v.exclude ?? prev?.scope?.exclude ?? [] })
+  const next = planFrom(prev, s, { include, exclude })
   writeLedger(L, next)
 
   if (v.json) {
@@ -117,7 +154,7 @@ async function cmdPlan (L, v) {
       coverage: s.coverage,
       dropped: s.dropped,
       drift: drift(prev, L.root),
-      costEstimateUsd: { low: next.chunks.length * 5, high: next.chunks.length * 25 },
+      costEstimateUsd: costRange(next.chunks.length),
       chunks: next.chunks.map(ch => ({ id: ch.id, files: ch.files.length, lines: ch.lines, paths: ch.files.map(f => f.path) }))
     }, null, 2))
     return 0
@@ -152,7 +189,7 @@ function cmdFindings (L, v) {
   const all = collectFindings(L, ledger, ids)
   if (v.json) { out(JSON.stringify(all, null, 2)); return 0 }
   say(`${all.length} finding(s)`)
-  for (const f of all) out(`  [chunk ${f._curc.chunkId}] ${f.title ?? f.summary ?? JSON.stringify(f).slice(0, 120)}`)
+  for (const f of all) out(sanitize(`  [chunk ${f._curc.chunkId}] ${f.title ?? f.summary ?? JSON.stringify(f).slice(0, 120)}`))
   return 0
 }
 
@@ -199,10 +236,10 @@ async function cmdRun (L, v) {
 
   const { runId, pid } = launch(L, {
     chunkIds: ids,
-    concurrency: Math.min(Number(v.concurrency ?? 3), 3),
-    timeout: Number(v.timeout ?? 45)
+    concurrency: intArg('concurrency', v.concurrency, { min: 1, max: MAX_CONCURRENCY, fallback: MAX_CONCURRENCY }),
+    timeout: intArg('timeout', v.timeout, { min: 1, fallback: DEFAULT_TIMEOUT_MIN })
   })
-  if (v.json) out(JSON.stringify({ runId, supervisorPid: pid, chunks: ids, costEstimateUsd: { low: ids.length * 5, high: ids.length * 25 } }, null, 2))
+  if (v.json) out(JSON.stringify({ runId, supervisorPid: pid, chunks: ids, costEstimateUsd: costRange(ids.length) }, null, 2))
   else say(c.green(`started ${runId}`) + c.dim(` (pid ${pid}) — \`curc status\` to follow`))
   return 0
 }

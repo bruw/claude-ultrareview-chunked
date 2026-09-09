@@ -12,6 +12,11 @@ const BIN = fileURLToPath(new URL('../bin/curc.js', import.meta.url))
 export const HARD_MAX_FILES = 500
 export const HARD_MAX_LINES = 8000
 
+/** Three reviews in flight is the ceiling, wherever the number comes from. */
+export const MAX_CONCURRENCY = 3
+/** Matches `claude ultrareview --timeout <minutes>`, whose own default is 45. */
+export const DEFAULT_TIMEOUT_MIN = 45
+
 /**
  * One supervisor per repo, not one per chunk.
  *
@@ -50,6 +55,9 @@ export async function supervise (root, runId) {
   beat.unref?.()
 
   const queue = JSON.parse(fs.readFileSync(path.join(L.home, 'queue.json'), 'utf8'))
+  // Clamped here, not only in the callers: a concurrency the pump cannot honour
+  // is a supervisor that starts nothing and exits without saying so.
+  queue.concurrency = clampConcurrency(queue.concurrency)
   const pending = [...queue.chunkIds]
   const live = new Set()
   let stopping = false
@@ -181,6 +189,12 @@ export function stopAll (L) {
   try { rec = JSON.parse(fs.readFileSync(L.lock, 'utf8')) } catch { return { stopped: false, reason: 'no supervisor running' } }
   try { process.kill(-rec.pid, 'SIGTERM') } catch { try { process.kill(rec.pid, 'SIGTERM') } catch {} }
   return { stopped: true, pid: rec.pid }
+}
+
+export function clampConcurrency (n) {
+  const i = Number(n)
+  if (!Number.isInteger(i) || i < 1) return 1
+  return Math.min(i, MAX_CONCURRENCY)
 }
 
 const now = () => new Date().toISOString()

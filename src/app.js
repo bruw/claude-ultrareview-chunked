@@ -7,13 +7,13 @@ import { survey, planFrom, drift } from './plan.js'
 import { droppedSummary } from './scope.js'
 import { preflight, lockHolder } from './preflight.js'
 import { statusRows, doneRows, collectFindings } from './report.js'
-import { launch, stopAll } from './supervisor.js'
+import { launch, stopAll, MAX_CONCURRENCY, DEFAULT_TIMEOUT_MIN } from './supervisor.js'
 import { dropPair, listRefs } from './branches.js'
 import { removeWorktree } from './worktree.js'
 import { menu, confirm, toggleList, resolveIds, ask, closePrompt, isTTY } from './prompt.js'
-import { c, say, out, num, table, paintStatus, costBand } from './ui.js'
+import { c, say, out, num, table, paintStatus, costBand, sanitize } from './ui.js'
 
-const MAX_PER_LAUNCH = 3
+const MAX_PER_LAUNCH = MAX_CONCURRENCY
 
 /**
  * The one entry point. Everything a person needs to do — see the plan, pick
@@ -206,7 +206,7 @@ async function doReview (L, ledger) {
   const { runId, pid } = launch(L, {
     chunkIds: picked.map(r => r.id),
     concurrency: Math.min(MAX_PER_LAUNCH, picked.length),
-    timeout: 45
+    timeout: DEFAULT_TIMEOUT_MIN
   })
   say(c.green(`\n  started ${runId}`) + c.dim(` (supervisor pid ${pid})`))
   say(c.dim('  Reviews take 5–10 minutes each and keep running if you quit.'))

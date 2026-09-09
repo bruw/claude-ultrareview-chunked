@@ -45,10 +45,36 @@ export function paintStatus (s) {
   return (STATUS_STYLE[s] ?? (x => x))(s)
 }
 
-/** The cost band is a documented default, correctable without a release. */
-export const COST_LOW = Number(process.env.CURC_COST_LOW ?? 5)
-export const COST_HIGH = Number(process.env.CURC_COST_HIGH ?? 25)
+/**
+ * The cost band is a documented default, correctable without a release — but a
+ * typo in the override must not turn the one number that governs consent into
+ * "$NaN".
+ */
+const band = (env, fallback) => {
+  const raw = process.env[env]
+  const n = Number(raw)
+  return raw !== undefined && Number.isFinite(n) && n >= 0 ? n : fallback
+}
+export const COST_LOW = band('CURC_COST_LOW', 5)
+export const COST_HIGH = band('CURC_COST_HIGH', 25)
+
+/** The one source of the cost figures, so no caller can quote its own. */
+export function costRange (n) {
+  return { low: n * COST_LOW, high: n * COST_HIGH }
+}
 
 export function costBand (n) {
-  return `$${num(n * COST_LOW)}–$${num(n * COST_HIGH)}`
+  const { low, high } = costRange(n)
+  return `$${num(low)}–$${num(high)}`
+}
+
+/**
+ * Findings are model-authored text. Printed straight to a terminal, an escape
+ * sequence in a title is not text but a command — so strip the control range
+ * from anything that came out of a review. `--json` is data and stays raw.
+ */
+const CONTROL = /[\x00-\x08\x0b-\x1f\x7f-\x9f]/g
+
+export function sanitize (s) {
+  return String(s ?? '').replace(CONTROL, '')
 }
