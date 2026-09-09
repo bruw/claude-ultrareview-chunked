@@ -26,8 +26,8 @@ throwaway commit pair for each one where the "change" is exactly that chunk, and
 one ultrareview per pair. The reviewer still gets the whole repository to read, so it
 can follow an import out of the chunk instead of guessing.
 
-Then it keeps score by content, not by chunk number, so you can sweep a live codebase
-over weeks without paying to re-review files that only moved.
+It keeps score by content, so you can sweep a live codebase
+over weeks without paying to re-review files that moved.
 
 
 ## How the chunk trick works
