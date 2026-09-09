@@ -1,4 +1,3 @@
-import fs from 'node:fs'
 import { isRepo, tryGit } from './git.js'
 import * as claude from './claude.js'
 import { listRefs } from './branches.js'
