@@ -1,5 +1,5 @@
 import path from 'node:path'
-import { lsFilesStaged, measureBlobs } from './git.js'
+import { lsFilesStaged, measureBlobs, MODE_GITLINK, MODE_SYMLINK } from './git.js'
 
 /**
  * Paths that cost review budget and return nothing: binaries by extension,
@@ -23,6 +23,19 @@ export const DEFAULT_EXCLUDES = [
   '.claude/curc/**', '.claude/worktrees/**'
 ]
 
+/**
+ * Compiled globs are cached: collectFiles tests every tracked file against the
+ * whole exclude list, so compiling per test is tens of thousands of identical
+ * RegExp constructions on a repo of any size.
+ */
+const compiled = new Map()
+
+function globRe (glob) {
+  let re = compiled.get(glob)
+  if (!re) { re = globToRegExp(glob); compiled.set(glob, re) }
+  return re
+}
+
 /** Translate a glob subset (`**`, `*`, `?`) into a RegExp. */
 export function globToRegExp (glob) {
   let re = ''
@@ -40,7 +53,7 @@ export function globToRegExp (glob) {
 }
 
 export function matchesAny (p, globs) {
-  return globs.some(g => globToRegExp(g).test(p))
+  return globs.some(g => globRe(g).test(p))
 }
 
 /**
@@ -53,22 +66,40 @@ export async function collectFiles (root, { include = [], exclude = [], maxLines
   const tracked = lsFilesStaged(root, include)
 
   const kept = []
-  const dropped = { excluded: [], binary: [], oversize: [] }
+  const dropped = { excluded: [], submodule: [], symlink: [], binary: [], oversize: [], unreadable: [] }
 
   const candidates = tracked.filter(f => {
+    // Gitlinks go by mode, before measurement. `ls-files -s` puts a submodule's
+    // *commit* sha in the object column, and after an ordinary clone that commit
+    // is not in this repository at all — so this is both the cheapest and the
+    // only reliable way to recognise one.
+    if (f.mode === MODE_GITLINK) { dropped.submodule.push(f.path); return false }
+    if (f.mode === MODE_SYMLINK) { dropped.symlink.push(f.path); return false }
     if (matchesAny(f.path, globs)) { dropped.excluded.push(f.path); return false }
     return true
   })
 
   const sizes = await measureBlobs(root, candidates.map(f => f.blob))
   for (const f of candidates) {
-    const m = sizes.get(f.blob) ?? { lines: 0, binary: false }
+    const m = sizes.get(f.blob)
+    // No "unknown looks empty" default: that is how an unmeasurable object used
+    // to sail through as a 0-line file nobody ever heard about again.
+    if (!m) throw new Error(`measureBlobs returned no record for ${f.path} (${f.blob})`)
+    if (!m.ok) { dropped.unreadable.push({ path: f.path, reason: m.reason }); continue }
     if (m.binary) { dropped.binary.push(f.path); continue }
     if (m.lines > maxLines) { dropped.oversize.push({ path: f.path, lines: m.lines }); continue }
     kept.push({ path: f.path, blob: f.blob, lines: m.lines })
   }
   kept.sort((a, b) => a.path.localeCompare(b.path))
   return { files: kept, dropped }
+}
+
+/** Total dropped, and a per-reason breakdown, without hardcoding the reasons. */
+export function droppedSummary (dropped) {
+  const parts = Object.entries(dropped ?? {})
+    .filter(([, v]) => v.length)
+    .map(([name, v]) => ({ name, count: v.length }))
+  return { total: parts.reduce((n, p) => n + p.count, 0), parts }
 }
 
 /** Per-top-level-directory totals, for the scope picker. */

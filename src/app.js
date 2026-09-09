@@ -4,6 +4,7 @@ import { repoRoot, shortSha } from './git.js'
 import { layout, ensureDirs, pad } from './paths.js'
 import { readLedger, writeLedger, runState } from './ledger.js'
 import { survey, planFrom, drift } from './plan.js'
+import { droppedSummary } from './scope.js'
 import { preflight, lockHolder } from './preflight.js'
 import { statusRows, doneRows, collectFindings } from './report.js'
 import { launch, stopAll } from './supervisor.js'
@@ -135,11 +136,13 @@ async function replan (L, ledger) {
     s = await survey(L.root, { include, exclude, reviewed: ledger?.reviewed ?? {} })
   }
 
+  // Driven off the buckets themselves, so a reason added later cannot go unsaid.
   const dropped = s.dropped
-  const dropCount = dropped.excluded.length + dropped.binary.length + dropped.oversize.length
-  if (dropCount) {
-    say(c.dim(`  skipped ${dropCount}: ${dropped.excluded.length} excluded, ${dropped.binary.length} binary, ${dropped.oversize.length} over the ${num(s.caps.maxLines)}-line cap`))
+  const { total, parts } = droppedSummary(dropped)
+  if (total) {
+    say(c.dim(`  skipped ${total}: ${parts.map(p => `${p.count} ${p.name}`).join(', ')}`))
     for (const o of dropped.oversize.slice(0, 5)) say(c.dim(`    ${o.path} (${num(o.lines)} lines — no diff can hold it)`))
+    for (const u of dropped.unreadable.slice(0, 5)) say(c.yellow(`    ${u.path} — ${u.reason} from the object store`))
   }
 
   // Pending chunks from the old plan are about to be renumbered; their refs go.
