@@ -6,8 +6,8 @@ import { survey, planFrom, drift } from './plan.js'
 import { preflight, lockHolder } from './preflight.js'
 import { snapshot as statusSnapshot, statusRows, collectFindings } from './report.js'
 import { launch, supervise, stopAll, unlock, MAX_CONCURRENCY, DEFAULT_TIMEOUT_MIN } from './supervisor.js'
-import { buildPair, dropPair, pairSize, listRefs } from './branches.js'
-import { removeWorktree } from './worktree.js'
+import { buildPair, dropPair, dropRef, pairSize } from './branches.js'
+import { removeWorktree, removeWorktreeDir, sweepable } from './worktree.js'
 import { reviewArgv } from './claude.js'
 import { guided } from './app.js'
 import { c, say, out, num, table, paintStatus, costBand, costRange, sanitize } from './ui.js'
@@ -310,11 +310,19 @@ function cmdStop (L) {
 
 function cmdClean (L, v) {
   if (lockHolder(L)?.alive) { say(c.red('a run is in flight — `curc stop` first')); return 6 }
-  const ledger = readLedger(L)
-  const refs = listRefs(L)
-  if (!v.yes) { say(`${refs.length} curc/ branch(es) would be removed. Pass --yes.`); return 5 }
-  for (const ch of [...(ledger?.chunks ?? []), ...(ledger?.archive ?? [])]) { removeWorktree(L, ch.id); dropPair(L, ch.id) }
-  say(c.green('cleaned'))
+  const { refs, worktreeDirs } = sweepable(L)
+  if (!refs.length && !worktreeDirs.length) { say(c.dim('nothing to clean')); return 0 }
+  if (!v.yes) {
+    say(`${refs.length} curc/ branch(es) and ${worktreeDirs.length} worktree(s) would be removed. Pass --yes.`)
+    say(c.dim('findings and the ledger are kept'))
+    return 5
+  }
+  // Driven off what is actually in the repository, not off the ledger: a
+  // re-plan renumbers chunks, so the refs worth cleaning are precisely the
+  // ones no ledger entry points at any more.
+  for (const name of worktreeDirs) removeWorktreeDir(L, name)
+  for (const ref of refs) dropRef(L, ref)
+  say(c.green(`cleaned ${refs.length} branch(es), ${worktreeDirs.length} worktree(s)`))
   return 0
 }
 

@@ -8,8 +8,8 @@ import { droppedSummary } from './scope.js'
 import { preflight, lockHolder } from './preflight.js'
 import { statusRows, doneRows, collectFindings } from './report.js'
 import { launch, stopAll, MAX_CONCURRENCY, DEFAULT_TIMEOUT_MIN } from './supervisor.js'
-import { dropPair, listRefs } from './branches.js'
-import { removeWorktree } from './worktree.js'
+import { dropPair, dropRef } from './branches.js'
+import { removeWorktree, removeWorktreeDir, sweepable } from './worktree.js'
 import { menu, confirm, toggleList, resolveIds, ask, closePrompt, isTTY } from './prompt.js'
 import { c, say, out, num, table, paintStatus, costBand, sanitize } from './ui.js'
 
@@ -62,7 +62,7 @@ export async function guided (cwd) {
     else if (choice === 'watch') doWatch(L, ledger)
     else if (choice === 'findings') doFindings(L, ledger)
     else if (choice === 'replan') ledger = await replan(L, ledger) ?? ledger
-    else if (choice === 'clean') await doClean(L, ledger)
+    else if (choice === 'clean') await doClean(L)
   }
 
   closePrompt()
@@ -249,31 +249,44 @@ function doFindings (L, ledger) {
   say(c.dim('  `curc findings --json` prints them all with chunk provenance.'))
 }
 
-async function doClean (L, ledger) {
+async function doClean (L) {
   if (lockHolder(L)?.alive) { say(c.yellow('\n  A run is in flight — stop it first.')); return }
-  const refs = listRefs(L)
-  const wts = fs.existsSync(L.worktrees)
-    ? fs.readdirSync(L.worktrees).filter(n => n.startsWith('curc-'))
-    : []
+  const { refs, worktreeDirs } = sweepable(L)
   say('')
-  if (!refs.length && !wts.length) { say(c.dim('  nothing to clean')); return }
-  say(`  ${refs.length} branch(es) under curc/, ${wts.length} worktree(s).`)
+  if (!refs.length && !worktreeDirs.length) { say(c.dim('  nothing to clean')); return }
+  say(`  ${refs.length} branch(es) under curc/, ${worktreeDirs.length} worktree(s).`)
   say(c.dim('  Findings and the ledger are kept.'))
   if (!await confirm('  Remove them?')) return
-  for (const ch of [...(ledger.chunks ?? []), ...(ledger.archive ?? [])]) { removeWorktree(L, ch.id); dropPair(L, ch.id) }
-  say(c.green('  cleaned'))
+  // What was counted is what gets removed — see cmdClean.
+  for (const name of worktreeDirs) removeWorktreeDir(L, name)
+  for (const ref of refs) dropRef(L, ref)
+  say(c.green(`  cleaned ${refs.length} branch(es), ${worktreeDirs.length} worktree(s)`))
 }
 
+/**
+ * Both paths, not just the ledger.
+ *
+ * `.claude/worktrees/` holds up to three full checkouts of the repo during a
+ * sweep. Untracked, they turn `git status` into noise, make preflight's
+ * dirty-tree warning fire on curc's own output, and put a habitual
+ * `git add -A` one keystroke from staging a copy of the entire tree.
+ */
 async function offerGitignore (L) {
   const gi = path.join(L.root, '.gitignore')
-  const line = '.claude/curc/'
+  const want = ['.claude/curc/', '.claude/worktrees/']
   let text = ''
   try { text = fs.readFileSync(gi, 'utf8') } catch {}
-  if (text.split('\n').some(l => l.trim() === line)) return
+
+  const have = new Set(text.split('\n').map(l => l.trim()))
+  const missing = want.filter(l => !have.has(l))
+  if (!missing.length) return
+
   say('')
-  if (!await confirm(`  Add ${c.bold(line)} to .gitignore? ${c.dim('(curc writes its ledger and findings there)')}`, { default: true })) return
-  fs.appendFileSync(gi, (text && !text.endsWith('\n') ? '\n' : '') + `\n# curc — chunked ultrareview state\n${line}\n`)
-  say(c.green('  added'))
+  const what = missing.map(l => c.bold(l)).join(' and ')
+  if (!await confirm(`  Add ${what} to .gitignore? ${c.dim('(curc writes its state and review worktrees there)')}`, { default: true })) return
+  fs.appendFileSync(gi, (text && !text.endsWith('\n') ? '\n' : '') +
+    `\n# curc — chunked ultrareview state\n${missing.join('\n')}\n`)
+  say(c.green(`  added ${missing.length} line(s)`))
 }
 
 export { stopAll, pad }

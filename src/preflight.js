@@ -2,6 +2,7 @@ import fs from 'node:fs'
 import { isRepo, tryGit } from './git.js'
 import * as claude from './claude.js'
 import { listRefs } from './branches.js'
+import { REF_PREFIX } from './paths.js'
 
 /**
  * Everything that must hold before curc spends anything. Each result carries
@@ -33,6 +34,27 @@ export function preflight (root, { ledger = null, forRun = false, claudeChecks =
     return { checks, ok: false, exitCode: 6 }
   }
 
+  // A branch literally named `curc` makes every `curc/base-NNNN` impossible —
+  // git cannot have both a ref and a directory of refs at the same path — and
+  // the failure otherwise surfaces per chunk, mid-run, as raw git text.
+  if (tryGit(['rev-parse', '--verify', '--quiet', `refs/heads/${REF_PREFIX}`], { cwd: root }).code === 0) {
+    add('curc/ namespace', false, `a branch named \`${REF_PREFIX}\` blocks the \`${REF_PREFIX}/\` namespace`,
+      `rename or delete it — git cannot hold both \`${REF_PREFIX}\` and \`${REF_PREFIX}/base-0001\``)
+    return { checks, ok: false, exitCode: 3 }
+  }
+
+  // These are repository facts, so they belong above the Claude probes: `plan`,
+  // `status` and `clean` are exactly the commands run after an interrupted
+  // sweep, and they used to skip the stray-ref check entirely.
+  const known = new Set()
+  for (const c of ledger?.chunks ?? []) { known.add(`${REF_PREFIX}/base-${p(c.id)}`); known.add(`${REF_PREFIX}/chunk-${p(c.id)}`) }
+  const strays = listRefs({ root }).filter(r => !known.has(r))
+  if (strays.length) {
+    add(`${REF_PREFIX}/ refs`, false, `${strays.length} ref(s) under ${REF_PREFIX}/ that this ledger does not own`,
+      `inspect them, then \`curc clean --yes\`: ${strays.slice(0, 3).join(', ')}${strays.length > 3 ? '…' : ''}`,
+      false)
+  } else add(`${REF_PREFIX}/ refs`, true, 'clean')
+
   // Claude Code has to be there before anything else is worth doing — but the
   // free commands (plan, status, findings) do not need it, and probing costs a
   // subprocess, so they ask for the repository checks only.
@@ -60,15 +82,6 @@ export function preflight (root, { ledger = null, forRun = false, claudeChecks =
   }
   add('authentication', true, auth.subscriptionType ? `claude.ai (${auth.subscriptionType})` : 'claude.ai')
 
-  const known = new Set()
-  for (const c of ledger?.chunks ?? []) { known.add(`curc/base-${p(c.id)}`); known.add(`curc/chunk-${p(c.id)}`) }
-  const strays = listRefs({ root }).filter(r => !known.has(r))
-  if (strays.length) {
-    add('curc/ refs', false, `${strays.length} ref(s) under curc/ that this ledger does not own`,
-      `inspect them, then \`curc clean\`: ${strays.slice(0, 3).join(', ')}${strays.length > 3 ? '…' : ''}`,
-      false)
-  } else add('curc/ refs', true, 'clean')
-
   const dirty = tryGit(['status', '--porcelain'], { cwd: root }).stdout.trim()
   if (dirty) {
     add('working tree', true,
@@ -78,7 +91,7 @@ export function preflight (root, { ledger = null, forRun = false, claudeChecks =
 
   if (forRun && process.platform === 'win32') {
     add('platform', false, 'background runs are POSIX-only in this version',
-      'use WSL, or run with --attach to stay in the foreground')
+      'run curc under WSL — the supervisor needs POSIX process groups')
   }
 
   return finish(checks)

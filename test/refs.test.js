@@ -7,6 +7,15 @@ import { tmpRepo, lines, cleanup } from './helpers/tmprepo.js'
 import { layout, ensureDirs } from '../src/paths.js'
 import { buildPair, dropPair, pairSize } from '../src/branches.js'
 import { git, headSha, treeOf } from '../src/git.js'
+import { fileURLToPath } from 'node:url'
+import { spawnSync } from 'node:child_process'
+
+const BIN = fileURLToPath(new URL('../bin/curc.js', import.meta.url))
+const FAKE = fileURLToPath(new URL('./helpers/fake-claude.js', import.meta.url))
+const curcBin = (dir, args) => spawnSync(process.execPath, [BIN, ...args], {
+  cwd: dir, encoding: 'utf8', env: { ...process.env, CURC_CLAUDE_BIN: FAKE, NO_COLOR: '1' }
+})
+const L2 = dir => { const l = layout(dir); ensureDirs(l); return l }
 
 function fixture () {
   const { dir, git: g } = tmpRepo({
@@ -118,5 +127,57 @@ test('dropPair removes only the curc namespace', () => {
   const branches = g('for-each-ref', '--format=%(refname:short)', 'refs/heads/').stdout.split('\n')
   assert.ok(!branches.includes('curc/base-0003'))
   assert.ok(branches.includes('feature/keep-me'))
+  cleanup(dir)
+})
+
+/**
+ * `clean` counted from the repository and deleted from the ledger, so the refs
+ * most in need of cleaning — the ones a re-plan orphaned, which no ledger entry
+ * points at any more — were reported and then left exactly where they were.
+ */
+test('clean removes the stray refs it counts, not just the ones the ledger knows', () => {
+  const { dir, g } = fixture()
+  const snapshot = headSha(dir)
+  buildPair(L2(dir), { id: 1, snapshot, snapshotTree: treeOf(dir, snapshot), files: chunkOf(L2(dir), ['src/a.js']) })
+  // A pair from an earlier numbering, of the kind a re-plan leaves behind.
+  g('branch', 'curc/base-9999', 'HEAD')
+  g('branch', 'curc/chunk-9999', 'HEAD')
+  g('branch', 'feature/keep-me')
+
+  const r = curcBin(dir, ['clean', '--yes'])
+  assert.equal(r.status, 0)
+  assert.equal(g('for-each-ref', '--format=%(refname:short)', 'refs/heads/curc/').stdout.trim(), '')
+  assert.match(g('for-each-ref', '--format=%(refname:short)', 'refs/heads/').stdout, /feature\/keep-me/)
+  cleanup(dir)
+})
+
+test('clean reports nothing to do when there is nothing, rather than "cleaned"', () => {
+  const { dir } = fixture()
+  const r = curcBin(dir, ['clean', '--yes'])
+  assert.equal(r.status, 0)
+  assert.match(r.stderr, /nothing to clean/)
+  cleanup(dir)
+})
+
+test('a branch named curc is caught before any pair is built', () => {
+  const { dir, g } = fixture()
+  g('branch', 'curc')
+  const r = curcBin(dir, ['plan', '--json'])
+  assert.notEqual(r.status, 0)
+  assert.match(r.stderr, /blocks the `curc\/` namespace/)
+  assert.equal(g('for-each-ref', '--format=%(refname:short)', 'refs/heads/curc/').stdout.trim(), '')
+  cleanup(dir)
+})
+
+test('the stray-ref check runs for plan, not only when claude is probed', async () => {
+  const { dir, g } = fixture()
+  g('branch', 'curc/base-9999', 'HEAD')
+  // plan asks for the repository checks only, and used to skip this entirely.
+  const { preflight } = await import('../src/preflight.js')
+  const pre = preflight(dir, { claudeChecks: false })
+  const refs = pre.checks.find(c => c.name === 'curc/ refs')
+  assert.ok(refs, 'the check must be present without the claude probes')
+  assert.equal(refs.ok, false)
+  assert.match(refs.remedy, /curc clean --yes/)
   cleanup(dir)
 })

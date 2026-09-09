@@ -74,20 +74,20 @@ export function assertPair (L, { id, files, base, chunk, snapshotTree }) {
     if (t !== snapshotTree) throw new Error(`chunk ${pad(id)}: chunk tree is not the snapshot tree`)
   }
 
-  const changed = git(['diff', '--name-only', '-z', base, chunk], { cwd }).split('\0').filter(Boolean).sort()
+  const changed = git(['diff', '--name-only', '-z', base, chunk, '--'], { cwd }).split('\0').filter(Boolean).sort()
   const expected = files.map(f => f.path).sort()
   if (changed.length !== expected.length || changed.some((p, i) => p !== expected[i])) {
     throw new Error(`chunk ${pad(id)}: diff lists ${changed.length} files, expected ${expected.length}`)
   }
 
   // --diff-filter=a is "everything that is NOT an addition"; it must be empty.
-  const nonAdds = git(['diff', '--name-only', '--diff-filter=a', base, chunk], { cwd })
+  const nonAdds = git(['diff', '--name-only', '--diff-filter=a', base, chunk, '--'], { cwd })
   if (nonAdds) throw new Error(`chunk ${pad(id)}: diff contains non-additions:\n${nonAdds}`)
 }
 
 /** Changed-file and changed-line counts as ultrareview will see them. */
 export function pairSize (L, id) {
-  const out = git(['diff', '--numstat', L.baseRef(id), L.chunkRef(id)], { cwd: L.root })
+  const out = git(['diff', '--numstat', L.baseRef(id), L.chunkRef(id), '--'], { cwd: L.root })
   let files = 0
   let lines = 0
   for (const line of out.split('\n').filter(Boolean)) {
@@ -98,12 +98,15 @@ export function pairSize (L, id) {
   return { files, lines }
 }
 
-/** Delete a chunk's ref pair. Refuses anything outside the curc namespace. */
+/** Delete one ref. Refuses anything outside the curc namespace. */
+export function dropRef (L, ref) {
+  if (!ref.startsWith(`${REF_PREFIX}/`)) throw new Error(`refusing to delete ${ref}: outside ${REF_PREFIX}/`)
+  return tryGit(['branch', '-D', ref], { cwd: L.root }).code === 0
+}
+
+/** Delete a chunk's ref pair. */
 export function dropPair (L, id) {
-  for (const ref of [L.baseRef(id), L.chunkRef(id)]) {
-    if (!ref.startsWith(`${REF_PREFIX}/`)) throw new Error(`refusing to delete ${ref}: outside ${REF_PREFIX}/`)
-    tryGit(['branch', '-D', ref], { cwd: L.root })
-  }
+  for (const ref of [L.baseRef(id), L.chunkRef(id)]) dropRef(L, ref)
 }
 
 export function listRefs (L) {
