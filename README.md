@@ -1,4 +1,4 @@
-# curc
+# Claude Utrareview Chunks - CURC
 
 Review a whole existing codebase with Claude Code's ultrareview, one chunk at a time.
 
@@ -10,9 +10,9 @@ npx -y curc@latest
 > **Unofficial.** curc is a third-party tool, not made by or affiliated with Anthropic.
 > It just drives the `claude` CLI you already have.
 
-> **It spends money.** Every chunk is one cloud ultrareview, roughly **$5–$25 in usage
-> credits** after your 3 free lifetime runs. A 300k-line repo is ~50 chunks. curc shows
-> you the bill before every launch and never starts one without a yes.
+> **It spends money.** Every chunk is one cloud ultrareview, roughly $5–$25 in usage
+> credits after your **3 free runs**. A 300k-line repo is ~50 chunks. curc estimates
+> the bill before every launch and never starts one without a yes.
 
 ## The use case
 
@@ -28,6 +28,28 @@ can follow an import out of the chunk instead of guessing.
 
 Then it keeps score by content, not by chunk number, so you can sweep a live codebase
 over weeks without paying to re-review files that only moved.
+
+
+## How the chunk trick works
+
+For each chunk curc builds two commits:
+
+```
+curc/base-0007    orphan commit: the whole repo MINUS the chunk's files
+curc/chunk-0007   the whole repo, parented on that base
+```
+
+The diff between them is exactly the chunk, as pure additions. The review runs from a
+throwaway worktree with:
+
+```
+claude ultrareview curc/base-0007 --json --no-post
+```
+
+Both commits are built through a scratch git index. Your index, working tree, HEAD and
+branches are never touched. Every pair is checked before use (merge-base, exact file
+list, additions only) and re-measured against the 500-file / 8,000-line caps right
+before a review is allowed to start.
 
 ## Install
 
@@ -82,26 +104,6 @@ nothing ever hangs waiting on a terminal that is not there.
 timed out, or lost its supervisor still consumed a run). curc refuses those without it.
 </details>
 
-## How the chunk trick works
-
-For each chunk curc builds two commits:
-
-```
-curc/base-0007    orphan commit: the whole repo MINUS the chunk's files
-curc/chunk-0007   the whole repo, parented on that base
-```
-
-The diff between them is exactly the chunk, as pure additions. The review runs from a
-throwaway worktree with:
-
-```
-claude ultrareview curc/base-0007 --json --no-post
-```
-
-Both commits are built through a scratch git index. Your index, working tree, HEAD and
-branches are never touched. Every pair is checked before use (merge-base, exact file
-list, additions only) and re-measured against the 500-file / 8,000-line caps right
-before a review is allowed to start.
 
 ## Long sweeps
 
@@ -150,7 +152,7 @@ says so.
 ## The Claude Code plugin
 
 ```
-/plugin marketplace add artdiev/curc
+/plugin marketplace add bruw/curc
 /plugin install curc@curc
 ```
 
@@ -177,4 +179,4 @@ Bug reports and pull requests welcome. See [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## License
 
-MIT © artdiev
+MIT © bruw

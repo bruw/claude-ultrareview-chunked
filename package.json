@@ -10,14 +10,14 @@
     "git",
     "cli"
   ],
-  "homepage": "https://github.com/artdiev/curc",
+  "homepage": "https://github.com/bruw/curc",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/artdiev/curc.git"
+    "url": "git+https://github.com/bruw/curc.git"
   },
   "license": "MIT",
   "author": {
-    "name": "artdiev"
+    "name": "bruw"
   },
   "type": "module",
   "bin": {

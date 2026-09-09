@@ -3,7 +3,7 @@
   "name": "curc",
   "description": "curc — Claude UltraReview Chunk. Whole-codebase ultrareview sweeps.",
   "owner": {
-    "name": "artdiev"
+    "name": "bruw"
   },
   "plugins": [
     {
@@ -12,10 +12,10 @@
       "description": "Chunked whole-codebase sweeps with Claude Code's ultrareview.",
       "source": ".",
       "author": {
-        "name": "artdiev"
+        "name": "bruw"
       },
       "category": "code-review",
-      "homepage": "https://github.com/artdiev/curc"
+      "homepage": "https://github.com/bruw/curc"
     }
   ]
 }

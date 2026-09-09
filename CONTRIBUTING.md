@@ -6,7 +6,7 @@ one linter, one test runner. Keep it that way and most PRs will be easy to take.
 ## Setup
 
 ```bash
-git clone https://github.com/artdiev/curc
+git clone https://github.com/bruw/curc
 cd curc
 npm install          # only pulls in the linter
 npm test
