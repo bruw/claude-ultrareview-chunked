@@ -1,0 +1,5 @@
+# The bin has a shebang and the package is published from a checkout, so CRLF
+# would make it unrunnable on the platforms it targets. Everything here is
+# source; nothing needs native endings.
+* text=auto eol=lf
+*.png binary
