@@ -4,7 +4,7 @@ import { fileURLToPath } from 'node:url'
 import { spawn } from 'node:child_process'
 import { randomBytes } from 'node:crypto'
 import { layout, ensureDirs, pad } from './paths.js'
-import { readLedger, writeLedger, patchRun, writeRun, readRun, recordCoverage, runState, TERMINAL } from './ledger.js'
+import { readLedger, writeLedger, patchRun, writeRun, readRun, recordCoverage, runState, claimPath } from './ledger.js'
 import { buildPair, dropPair, pairSize } from './branches.js'
 import { addWorktree, removeWorktree } from './worktree.js'
 import * as claude from './claude.js'
@@ -29,7 +29,7 @@ export const WATCHDOG_GRACE_MIN = 5
  * can enforce "three at a time" across a fifty-chunk sweep, and it is also the
  * only writer of the ledger — which is why none of this needs a lock on it.
  */
-export function launch (L, { chunkIds, concurrency, timeout }) {
+export function launch (L, { chunkIds, concurrency, timeout, force = false }) {
   ensureDirs(L)
   fs.mkdirSync(L.queues, { recursive: true })
 
@@ -42,6 +42,14 @@ export function launch (L, { chunkIds, concurrency, timeout }) {
   const claimed = lock.acquire(L, runId, null)
   if (!claimed.ok) return { ok: false, reason: claimed.reason, holder: claimed.holder, remedy: claimed.remedy }
   fs.closeSync(claimed.fd)
+
+  // A claim is the record that a chunk has been paid for once, and the
+  // supervisor never releases one — so a review that failed, timed out, or
+  // was orphaned is unrepeatable by default. --force is the user saying they
+  // will wear a second bill. It is honoured here, under the lock, where no
+  // supervisor can be racing for the same claim; the claim itself stays
+  // atomic and untouched.
+  if (force) for (const id of chunkIds) fs.rmSync(claimPath(L, id), { force: true })
 
   const startedAt = new Date().toISOString()
   const queue = { runId, chunkIds, concurrency: clampConcurrency(concurrency), timeout, startedAt }
@@ -184,12 +192,16 @@ async function runChunk (L, id, queue) {
     // curc that spends money, so however the lock reasoning above is wrong —
     // now or after some later edit — the worst outcome is a chunk that goes
     // unreviewed, never one that is paid for twice.
+    const dir = addWorktree(L, id)
+
+    // Nothing that can fail sits between the claim and the spawn: a claim
+    // consumed by a worktree that would not check out is a chunk that reads
+    // as billed without a review ever having started.
     if (!claimChunk(L, id)) {
       log(L, `chunk ${pad(id)}: already claimed by another run; skipping`)
       return patchRun(L, id, { finishedAt: now(), exitCode: 1, reason: 'already-claimed' })
     }
 
-    const dir = addWorktree(L, id)
     const outFd = fs.openSync(L.findingsFor(id), 'w')
     const errFd = fs.openSync(L.logFor(id), 'w')
     log(L, `chunk ${pad(id)}: ${size.files} files / ${size.lines} lines — starting review`)
@@ -268,7 +280,7 @@ async function runChunk (L, id, queue) {
  */
 function claimChunk (L, id) {
   try {
-    fs.closeSync(fs.openSync(path.join(L.runs, `${pad(id)}.claim`), 'wx'))
+    fs.closeSync(fs.openSync(claimPath(L, id), 'wx'))
     return true
   } catch (e) {
     if (e.code === 'EEXIST') return false
@@ -330,4 +342,3 @@ const safeRead = p => { try { return fs.readFileSync(p, 'utf8') } catch { return
 function log (L, msg) {
   try { fs.appendFileSync(L.supervisorLog, `${now()} ${msg}\n`) } catch {}
 }
-export { TERMINAL }

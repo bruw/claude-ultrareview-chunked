@@ -1,17 +1,17 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import { repoRoot, shortSha } from './git.js'
-import { layout, ensureDirs, pad } from './paths.js'
+import { layout, ensureDirs } from './paths.js'
 import { readLedger, writeLedger } from './ledger.js'
 import { survey, planFrom, drift } from './plan.js'
 import { droppedSummary } from './scope.js'
 import { preflight, lockHolder } from './preflight.js'
 import { statusRows, doneRows, collectFindings } from './report.js'
-import { launch, stopAll, MAX_CONCURRENCY, DEFAULT_TIMEOUT_MIN } from './supervisor.js'
+import { launch, MAX_CONCURRENCY, DEFAULT_TIMEOUT_MIN } from './supervisor.js'
 import { dropPair, dropRef } from './branches.js'
 import { removeWorktree, removeWorktreeDir, sweepable } from './worktree.js'
 import { menu, confirm, toggleList, resolveIds, ask, closePrompt, isTTY } from './prompt.js'
-import { c, say, out, num, table, paintStatus, costBand, sanitize } from './ui.js'
+import { c, say, out, num, table, paintStatus, costBand, costRange, sanitize } from './ui.js'
 
 const MAX_PER_LAUNCH = MAX_CONCURRENCY
 
@@ -226,7 +226,24 @@ async function doReview (L, ledger) {
   say(c.dim('  The first 3 ultrareviews are free on Pro and Max; curc cannot see how many you have left.'))
   say(c.dim('  A run that starts and then fails still consumes one.'))
 
-  if (!await confirm(`\n  ${c.bold('Start')} ${picked.length} review(s) and spend up to ${costBand(picked.length).split('–')[1]}?`)) {
+  // A chunk that has been launched before may already have been billed, and
+  // the claim file will refuse it unless the launch is forced. That is a
+  // separate yes from the one below: spending is one decision, spending
+  // twice on the same chunk is another.
+  const again = picked.filter(r => r.claimed)
+  let force = false
+  if (again.length) {
+    say('')
+    say(c.yellow(`  ${again.length} of these may already have been billed: ${again.map(r => r.label).join(', ')}`))
+    say(c.dim('  A review that started and then failed, timed out, or lost its supervisor still consumed a run.'))
+    if (!await confirm('  Review them again anyway, and possibly pay twice?')) {
+      say(c.dim('  nothing started'))
+      return ledger
+    }
+    force = true
+  }
+
+  if (!await confirm(`\n  ${c.bold('Start')} ${picked.length} review(s) and spend up to $${num(costRange(picked.length).high)}?`)) {
     say(c.dim('  nothing started'))
     return ledger
   }
@@ -234,7 +251,8 @@ async function doReview (L, ledger) {
   const started = launch(L, {
     chunkIds: picked.map(r => r.id),
     concurrency: Math.min(MAX_PER_LAUNCH, picked.length),
-    timeout: DEFAULT_TIMEOUT_MIN
+    timeout: DEFAULT_TIMEOUT_MIN,
+    force
   })
   if (!started.ok) { say(c.red(`\n  ${started.remedy ?? started.reason}`)); return ledger }
 
@@ -328,4 +346,3 @@ async function offerGitignore (L) {
   say(c.green(`  added ${missing.length} line(s)`))
 }
 
-export { stopAll, pad }

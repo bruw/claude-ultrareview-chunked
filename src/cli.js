@@ -238,13 +238,14 @@ async function cmdRun (L, v) {
   if (bad) { say(c.red(bad)); return 2 }
   const ids = picked.ids
 
-  // A chunk that is running, queued, or orphaned may already have been paid
-  // for — an orphan in particular is a review whose supervisor died while it
-  // was in flight, and the cloud side does not care that curc lost track. The
-  // claim file will refuse the spend anyway, but saying so here is better than
-  // watching a chunk come back "already-claimed".
+  // A chunk that is queued, or that has ever been launched — running,
+  // orphaned, failed, timed out, interrupted — may already have been paid for:
+  // a review that starts and then dies still consumes a run, and the cloud
+  // side does not care that curc lost track. Without --force the claim file
+  // refuses the spend anyway; saying so here is better than watching a chunk
+  // come back "already-claimed".
   if (!v.force) {
-    const risky = rows.filter(r => ids.includes(r.id) && ['running', 'queued', 'orphaned'].includes(r.state))
+    const risky = rows.filter(r => ids.includes(r.id) && (r.claimed || ['running', 'queued', 'orphaned'].includes(r.state)))
     if (risky.length) {
       say(c.red(`${risky.length} chunk(s) may already have been billed:`))
       for (const r of risky) say(`  ${r.label}  ${r.state}`)
@@ -274,7 +275,8 @@ async function cmdRun (L, v) {
   const started = launch(L, {
     chunkIds: ids,
     concurrency: intArg('concurrency', v.concurrency, { min: 1, max: MAX_CONCURRENCY, fallback: MAX_CONCURRENCY }),
-    timeout: intArg('timeout', v.timeout, { min: 1, fallback: DEFAULT_TIMEOUT_MIN })
+    timeout: intArg('timeout', v.timeout, { min: 1, fallback: DEFAULT_TIMEOUT_MIN }),
+    force: Boolean(v.force)
   })
   if (!started.ok) { say(c.red(started.remedy ?? started.reason)); return 6 }
 

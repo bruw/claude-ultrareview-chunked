@@ -162,3 +162,34 @@ test('a ledger from another version says so instead of looking like a fresh repo
   assert.doesNotMatch(r.stderr, /no plan yet/, 'a paid-for record must not read as "never planned"')
   cleanup(dir)
 })
+
+/**
+ * The claim file is never released by the supervisor, so before this a chunk
+ * whose review failed could not be retried at all: `--force` got past the
+ * "may already have been billed" check and then came back `already-claimed`
+ * from inside the run, where nobody was looking.
+ */
+test('a failed chunk is refused without --force, and actually re-runs with it', async () => {
+  const { dir } = tmpRepo({ 'src/a.js': lines(20, 'a') })
+  const L = layout(dir)
+  const plan = JSON.parse(curc(dir, ['plan', '--json']).stdout)
+  const id = plan.chunks[0].id
+
+  curc(dir, ['run', '--chunks', String(id), '--yes'], { FAKE_CLAUDE_MODE: 'fail' })
+  await settle(L, [id])
+  const { readRun, runState, isClaimed } = await import('../src/ledger.js')
+  assert.equal(runState(readRun(L, id)), 'failed')
+  assert.equal(isClaimed(L, id), true, 'the review was launched, so the chunk is claimed')
+
+  const refused = curc(dir, ['run', '--chunks', String(id), '--yes'])
+  assert.equal(refused.status, 6)
+  assert.match(refused.stderr, /may already have been billed/)
+
+  curc(dir, ['run', '--chunks', String(id), '--yes', '--force'])
+  const ledger = await settle(L, [id])
+  const rec = readRun(L, id)
+  assert.equal(runState(rec), 'done', `--force must reach the review, not stop at the claim: ${JSON.stringify(rec)}`)
+  assert.notEqual(rec.reason, 'already-claimed')
+  assert.equal(ledger.archive.length, 1, 'the forced review records coverage like any other')
+  cleanup(dir)
+})

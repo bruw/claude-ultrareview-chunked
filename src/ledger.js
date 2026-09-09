@@ -71,6 +71,19 @@ export function patchRun (L, id, patch) {
   writeRun(L, id, { ...(readRun(L, id) ?? {}), ...patch })
 }
 
+/**
+ * The claim file: created atomically by the supervisor immediately before
+ * the one call that spends money, and never removed by it. Its existence
+ * means "a review of this chunk has been launched at least once".
+ */
+export function claimPath (L, id) {
+  return path.join(L.runs, `${pad(id)}.claim`)
+}
+
+export function isClaimed (L, id) {
+  return fs.existsSync(claimPath(L, id))
+}
+
 export function isAlive (pid) {
   if (!pid) return false
   try { process.kill(pid, 0); return true } catch (e) { return e.code === 'EPERM' }
