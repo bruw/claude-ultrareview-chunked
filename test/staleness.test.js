@@ -75,8 +75,14 @@ test('drift is reported once HEAD moves past the plan', async () => {
   fs.writeFileSync(path.join(dir, 'src/z.js'), lines(5, 'z'))
   git('add', '-A'); git('commit', '-qm', 'move head')
 
+  const status = JSON.parse(curc(dir, ['status', '--json']).stdout)
+  assert.equal(status.drift.state, 'drifted')
+
+  // A plan just made cannot be behind HEAD, and must not say it is: the skill
+  // reads 'drifted' as "offer a re-plan", which would loop.
   const plan = JSON.parse(curc(dir, ['plan', '--json']).stdout)
-  assert.equal(plan.drift.state, 'drifted')
+  assert.equal(plan.drift.state, 'fresh')
+  assert.equal(JSON.parse(curc(dir, ['status', '--json']).stdout).drift.state, 'fresh')
   cleanup(dir)
 })
 

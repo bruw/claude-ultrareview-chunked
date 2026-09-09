@@ -363,3 +363,34 @@ test('a stop leaves never-started chunks pending, not queued forever', async () 
   assert.equal(again.code, 0, `never-launched chunks are not "may already have been billed": ${again.err}`)
   cleanup(dir)
 })
+
+/**
+ * Planning deletes every pending chunk's refs and worktree. It used to check
+ * the lock and then survey, and a run that started during the survey had its
+ * review torn down mid-flight. Now the plan holds the lock itself.
+ */
+test('a run cannot start while a plan is being made, and a plan cannot start under a run', async () => {
+  const { dir } = tmpRepo({ 'a/1.js': lines(20, 'a') })
+  const L = layout(dir)
+  curc(dir, ['plan', '--json'])
+
+  const { withLock } = await import('../src/lock.js')
+  const r = await withLock(L, 'plan-test', async () => {
+    const run = curc(dir, ['run', '--chunks', 'all', '--yes'])
+    assert.equal(run.code, 6, 'the plan lock refuses a run')
+    assert.match(run.err, /in flight/)
+    return 'done'
+  })
+  assert.equal(r.value, 'done')
+  assert.equal(lockState(L), null, 'the plan releases its lock')
+
+  assert.equal(curc(dir, ['run', '--chunks', 'all', '--yes'], { FAKE_CLAUDE_DELAY_MS: '3000' }).code, 0)
+  const until = Date.now() + 10000
+  while (Date.now() < until && !lockState(L)?.pid) await new Promise(resolve => setTimeout(resolve, 50))
+  const plan = curc(dir, ['plan', '--json'])
+  assert.equal(plan.code, 6, 'a run in flight refuses a plan')
+  stopAll(L)
+  const gone = Date.now() + 10000
+  while (Date.now() < gone && lockState(L)) await new Promise(resolve => setTimeout(resolve, 50))
+  cleanup(dir)
+})

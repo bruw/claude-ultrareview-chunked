@@ -12,6 +12,7 @@ import { dropPair, dropRef } from './branches.js'
 import { removeWorktree, removeWorktreeDir, sweepable } from './worktree.js'
 import { menu, confirm, toggleList, resolveIds, ask, closePrompt, isTTY } from './prompt.js'
 import { c, say, out, num, table, paintStatus, costBand, costRange, sanitize } from './ui.js'
+import { withLock } from './lock.js'
 
 const MAX_PER_LAUNCH = MAX_CONCURRENCY
 
@@ -122,11 +123,17 @@ function renderPreflight (pre) {
 /* ---- planning ----------------------------------------------------------- */
 
 async function replan (L, ledger) {
-  if (lockHolder(L)?.alive) {
-    say(c.yellow('\n  A run is in flight. Stop it before re-planning.'))
+  // The scope picker is inside the lock too: a run started while the user
+  // is choosing directories would be torn down by the re-plan that follows.
+  const r = await withLock(L, `plan-${process.pid}`, () => replanLocked(L, ledger))
+  if (!r.ok) {
+    say(c.yellow(`\n  ${r.remedy ?? 'A run is in flight. Stop it before re-planning.'}`))
     return ledger
   }
+  return r.value
+}
 
+async function replanLocked (L, ledger) {
   say(c.dim('\n  surveying…'))
   let include = ledger?.scope?.include ?? []
   const exclude = ledger?.scope?.exclude ?? []

@@ -74,9 +74,9 @@ curc unlock                           # clear a lock a dead supervisor left behi
 across re-plans, so after the first re-plan they stop matching list positions. An id
 that is not in the plan is refused rather than substituted.
 
-`--yes` is the only way a billed run starts without a terminal. Every prompt in the
-guided flow has a flag; when there is no terminal to ask on, curc errors with the flag
-name instead of hanging.
+`curc run` never prompts. `--yes` is the consent, terminal or not; without it curc
+prints the cost and exits. Every question the guided flow asks has a flag like that, so
+nothing ever hangs waiting on a terminal that is not there.
 
 `--force` re-runs a chunk that may already have been billed (a review that failed,
 timed out, or lost its supervisor still consumed a run). curc refuses those without it.

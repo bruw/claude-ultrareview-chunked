@@ -13,6 +13,7 @@ import { reviewArgv } from './claude.js'
 import { guided } from './app.js'
 import { c, say, out, num, table, paintStatus, costBand, costRange, sanitize } from './ui.js'
 import { resolveIds } from './prompt.js'
+import { withLock } from './lock.js'
 
 // One source of truth: the version lived here, in package.json, and in two
 // plugin manifests, which is three chances to forget one.
@@ -135,20 +136,22 @@ function whyNot (r, available, noun) {
 }
 
 async function cmdPlan (L, v) {
-  if (lockHolder(L)?.alive) { say(c.red('a run is in flight — `curc stop` first')); return 6 }
-  const prev = readLedger(L)
-  const include = pathspecs(v.scope) ?? prev?.scope?.include ?? []
-  const exclude = pathspecs(v.exclude) ?? prev?.scope?.exclude ?? []
-  const s = await survey(L.root, {
-    include,
-    exclude,
-    maxFiles: intArg('max-files', v['max-files']),
-    maxLines: intArg('max-lines', v['max-lines']),
-    reviewed: prev?.reviewed ?? {}
+  const maxFiles = intArg('max-files', v['max-files'])
+  const maxLines = intArg('max-lines', v['max-lines'])
+  // Held for the whole of it, survey included: a run that starts during the
+  // survey would otherwise have its refs and worktree deleted by the re-plan.
+  const r = await withLock(L, `plan-${process.pid}`, async () => {
+    const prev = readLedger(L)
+    const include = pathspecs(v.scope) ?? prev?.scope?.include ?? []
+    const exclude = pathspecs(v.exclude) ?? prev?.scope?.exclude ?? []
+    const s = await survey(L.root, { include, exclude, maxFiles, maxLines, reviewed: prev?.reviewed ?? {} })
+    for (const ch of prev?.chunks ?? []) { dropPair(L, ch.id); removeWorktree(L, ch.id) }
+    const next = planFrom(prev, s, { include, exclude })
+    writeLedger(L, next)
+    return { s, next }
   })
-  for (const ch of prev?.chunks ?? []) { dropPair(L, ch.id); removeWorktree(L, ch.id) }
-  const next = planFrom(prev, s, { include, exclude })
-  writeLedger(L, next)
+  if (!r.ok) { say(c.red(r.remedy ?? 'a run is in flight — `curc stop` first')); return 6 }
+  const { s, next } = r.value
 
   if (v.json) {
     out(JSON.stringify({
@@ -158,7 +161,7 @@ async function cmdPlan (L, v) {
       totals: { files: s.files.length, lines: s.files.reduce((n, f) => n + f.lines, 0), chunks: next.chunks.length },
       coverage: s.coverage,
       dropped: s.dropped,
-      drift: drift(prev, L.root),
+      drift: drift(next, L.root),
       costEstimateUsd: costRange(next.chunks.length),
       chunks: next.chunks.map(ch => ({ id: ch.id, files: ch.files.length, lines: ch.lines, paths: ch.files.map(f => f.path) }))
     }, null, 2))
@@ -254,13 +257,16 @@ async function cmdRun (L, v) {
     }
   }
 
+  const concurrency = intArg('concurrency', v.concurrency, { min: 1, max: MAX_CONCURRENCY, fallback: MAX_CONCURRENCY })
+  const timeout = intArg('timeout', v.timeout, { min: 1, fallback: DEFAULT_TIMEOUT_MIN })
+
   if (v['dry-run']) {
     const proved = []
     for (const id of ids) {
       const ch = ledger.chunks.find(x => x.id === id)
       buildPair(L, { id, snapshot: ledger.snapshot, snapshotTree: ledger.snapshotTree, files: ch.files })
       const size = pairSize(L, id)
-      const argv = reviewArgv(L.baseRef(id))
+      const argv = reviewArgv(L.baseRef(id), { timeout })
       proved.push({ id, files: size.files, lines: size.lines, argv })
       if (!v.json) out(`chunk ${id}: ${size.files} files / ${size.lines} lines — claude ${argv.join(' ')}`)
       dropPair(L, id)
@@ -276,12 +282,7 @@ async function cmdRun (L, v) {
     return 5
   }
 
-  const started = launch(L, {
-    chunkIds: ids,
-    concurrency: intArg('concurrency', v.concurrency, { min: 1, max: MAX_CONCURRENCY, fallback: MAX_CONCURRENCY }),
-    timeout: intArg('timeout', v.timeout, { min: 1, fallback: DEFAULT_TIMEOUT_MIN }),
-    force: Boolean(v.force)
-  })
+  const started = launch(L, { chunkIds: ids, concurrency, timeout, force: Boolean(v.force) })
   if (!started.ok) { say(c.red(started.remedy ?? started.reason)); return 6 }
 
   const { runId, pid } = started
@@ -352,7 +353,7 @@ function usage () {
   --json      machine-readable output      --repo <path>   act on another repo
   --dry-run   build and prove, launch nothing
   --force     review a chunk that may already have been billed
-  --yes       consent to spend (required when not a terminal)
+  --yes       consent to spend; run never prompts, and without it nothing starts
 
 Each chunk is one cloud ultrareview: $5–$25 in usage credits after the 3 free runs.
 Not affiliated with Anthropic.`)

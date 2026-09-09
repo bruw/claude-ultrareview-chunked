@@ -4,6 +4,7 @@ import { readRun, runState, classifyChunk, isClaimed, launchedBefore } from './l
 import { chunkLabel } from './chunker.js'
 import { pad } from './paths.js'
 import { lockHolder } from './preflight.js'
+import { drift } from './plan.js'
 
 /** One merged view of the plan and every run record. Read-only. */
 export function statusRows (L, ledger) {
@@ -55,6 +56,9 @@ export function snapshot (L, ledger) {
     caps: ledger?.caps ?? {},
     scope: ledger?.scope ?? {},
     supervisor: lockHolder(L),
+    // Drift belongs here, where a plan is being looked at — `plan` has just
+    // made one, so its own drift is always fresh.
+    drift: drift(ledger, L.root),
     counts,
     pending: rows,
     completed: doneRows(L, ledger),
@@ -77,7 +81,11 @@ export function collectFindings (L, ledger, ids = null) {
     }
     const list = Array.isArray(parsed)
       ? parsed
-      : parsed?.findings ?? parsed?.bugs ?? parsed?.results ?? []
+      : [parsed?.findings, parsed?.bugs, parsed?.results].find(Array.isArray)
+    if (!list) {
+      out.push({ _curc: { chunkId: a.id, parseError: true, findingsPath: path.relative(L.root, p) } })
+      continue
+    }
     const run = readRun(L, a.id)
     for (const f of list) {
       out.push({ ...f, _curc: { chunkId: a.id, snapshot: a.snapshot, reviewedAt: run?.finishedAt ?? a.at, sessionUrl: run?.sessionUrl ?? null } })

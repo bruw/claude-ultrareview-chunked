@@ -38,14 +38,17 @@ the same thing interactively.
 
 ## What to do
 
-**1 — Survey (free).** `curc plan --json`. Report: chunk count, files and lines in
-scope, how many files are already covered from earlier sweeps, and what was dropped
-(binaries, lockfiles, files too large for any diff).
+**1 — Where things stand (free).** `curc status --json` first. If there is a plan,
+report what is pending, running and done. If `drift.state` is `"drifted"`, HEAD has
+moved past the plan: say so and let the user decide whether to re-plan; do not
+silently pick. Re-planning is free and only re-chunks content that has not been
+reviewed — coverage is tracked by git blob sha, so a file that moved but did not
+change stays covered.
 
-**2 — Drift.** If `drift.state` is `"drifted"`, HEAD has moved past the plan. Say so
-and let the user decide whether to re-plan; do not silently pick. Re-planning is free
-and only re-chunks content that has not been reviewed — coverage is tracked by git blob
-sha, so a file that moved but did not change stays covered.
+**2 — Survey (free).** `curc plan --json` when there is no plan, or the user wants a
+new one. It replaces the pending plan (never the coverage record). Report: chunk
+count, files and lines in scope, how many files are already covered from earlier
+sweeps, and what was dropped (binaries, lockfiles, files too large for any diff).
 
 **3 — The cost, before anything else.** Present in one message, with the arithmetic
 shown:

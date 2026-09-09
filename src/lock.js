@@ -25,9 +25,11 @@ export const STALE_AFTER_S = 60
  * `clean` walked straight past it.
  */
 const read = L => {
-  let raw
-  try { raw = fs.readFileSync(L.lock, 'utf8') } catch { return null }
-  const ageSec = Math.max(0, (Date.now() - fs.statSync(L.lock).mtimeMs) / 1000)
+  let raw, ageSec
+  try {
+    raw = fs.readFileSync(L.lock, 'utf8')
+    ageSec = Math.max(0, (Date.now() - fs.statSync(L.lock).mtimeMs) / 1000)
+  } catch { return null } // gone, or went between the two calls: no lock
   try {
     const rec = JSON.parse(raw)
     if (rec && typeof rec === 'object') return { rec, ageSec, unreadable: false }
@@ -148,6 +150,25 @@ export function release (L, runId) {
   if (!owns(L, runId)) return false
   fs.rmSync(L.lock, { force: true })
   return true
+}
+
+/**
+ * Hold the lock for the duration of a synchronous-or-awaited body.
+ *
+ * Planning is a writer too: it deletes every pending chunk's refs and
+ * worktree and rewrites the ledger. Checking the lock and then surveying
+ * left a window as wide as the survey for a run to start underneath — and
+ * the plan then tore down a review that was in flight and billing.
+ */
+export async function withLock (L, who, body) {
+  const got = acquire(L, who, process.pid)
+  if (!got.ok) return { ok: false, reason: got.reason, remedy: got.remedy, holder: got.holder }
+  fs.closeSync(got.fd)
+  try {
+    return { ok: true, value: await body() }
+  } finally {
+    release(L, who)
+  }
 }
 
 /** `curc unlock`: the deliberate human act that replaces automatic reclaim. */
