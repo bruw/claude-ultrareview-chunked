@@ -8,7 +8,7 @@
   "plugins": [
     {
       "name": "curc",
-      "version": "0.2.0",
+      "version": "0.3.0",
       "description": "Chunked whole-codebase sweeps with Claude Code's ultrareview.",
       "source": ".",
       "author": {

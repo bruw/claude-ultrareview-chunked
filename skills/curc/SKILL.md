@@ -87,10 +87,10 @@ treat each fix as ordinary work: confirm the defect in the code first.
 
 ## Guardrails
 
-- A chunk reported as `orphaned` had its supervisor die while a review was in flight.
-  Report it; never re-run it, because that may double-bill. `curc run` refuses these
-  without `--force`, and the per-chunk claim file refuses the spend regardless — but
-  `--force` is the user's call to make, not yours.
+- A chunk reported as `orphaned`, `failed`, `timeout` or `interrupted` had a review
+  launched for it that did not finish cleanly, and the cloud side may have billed it
+  anyway. Report it; never re-run it yourself. `curc run` refuses these without
+  `--force`, and `--force` is the user's call to make, not yours.
 - `curc clean` removes only curc's branches and worktrees; findings and the ledger are
   kept. There is no `--all`.
 - If a repo says a run is in flight but nothing is running, the supervisor died holding

@@ -1,6 +1,6 @@
 {
   "name": "curc",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Chunked ultrareview: slice a whole codebase into diff-sized pieces and run a Claude Code ultrareview over each one.",
   "keywords": [
     "claude",

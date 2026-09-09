@@ -1,35 +1,44 @@
 # curc
 
-**C**laude **U**lt**r**areview **C**hunk — review an entire codebase with Claude Code's
-ultrareview, one diff-sized chunk at a time.
+Review a whole existing codebase with Claude Code's ultrareview, one chunk at a time.
 
-> **Unofficial.** curc is a third-party tool. It is not made by, endorsed by, or
-> affiliated with Anthropic. It drives the `claude` CLI you already have installed.
+```bash
+cd your-repo
+npx -y curc@latest
+```
 
-> **This costs money.** Every chunk is one billed cloud ultrareview: roughly **$5–$25 in
-> usage credits** after the 3 free lifetime runs on Pro and Max. A 291,000-line
-> repository chunks into ~51 pieces — **$255 to $1,275** for a full sweep. curc cannot
-> see your balance or how many free runs you have left. Nothing is billed until you
-> confirm.
+> **Unofficial.** curc is a third-party tool, not made by or affiliated with Anthropic.
+> It just drives the `claude` CLI you already have.
 
-## Why
+> **It spends money.** Every chunk is one cloud ultrareview, roughly **$5–$25 in usage
+> credits** after your 3 free lifetime runs. A 300k-line repo is ~50 chunks. curc shows
+> you the bill before every launch and never starts one without a yes.
 
-`/code-review ultra` reviews a **diff**, capped at 500 changed files and 8,000 changed
-lines. That makes it excellent before a merge and useless for the thing people keep
-wanting it for: a bug review of a codebase that already exists.
+## The use case
 
-curc makes a whole repository reviewable by cutting it into chunks that each fit inside
-the cap.
+You inherited a repo. Or you wrote one over three years and would like a second pair of
+eyes on *all* of it, not just the last pull request. `/code-review ultra` is very good
+at that, but it reviews a **diff**, capped at 500 files and 8,000 changed lines. Point
+it at an existing codebase and there is no diff to review.
+
+curc fakes the diff. It slices the repo into chunks that fit under the cap, builds a
+throwaway commit pair for each one where the "change" is exactly that chunk, and runs
+one ultrareview per pair. The reviewer still gets the whole repository to read, so it
+can follow an import out of the chunk instead of guessing.
+
+Then it keeps score by content, not by chunk number, so you can sweep a live codebase
+over weeks without paying to re-review files that only moved.
 
 ## Install
 
 ```bash
-npx -y curc@latest      # no install
-npm i -g curc           # or put it on PATH
+npx -y curc@latest      # nothing to install
+npm i -g curc           # or keep it on PATH
 ```
 
-Needs Node ≥ 20, git, and a Claude Code that is logged in to a claude.ai account and has
-`claude ultrareview`. curc checks all of that before it spends anything.
+You need Node 20+, git, and a Claude Code that is logged in to a claude.ai account
+(ultrareview does not work on API keys). curc checks all of that before it spends
+anything.
 
 ## Use it
 
@@ -37,12 +46,18 @@ Needs Node ≥ 20, git, and a Claude Code that is logged in to a claude.ai accou
 curc
 ```
 
-That's the whole interface. One guided terminal flow: it surveys the repo, shows you the
-chunks and what they cost, lets you pick some, launches the reviews in the background,
-and reads the findings back. Nothing has to be run in a particular order.
+That is the whole interface. It surveys the repo, shows you the chunks and what they
+cost, lets you pick a few, launches the reviews in the background, and reads the
+findings back when they land. Quit whenever; the reviews keep going.
+
+A first sweep usually looks like:
+
+1. `curc` → pick the directories you care about → it plans, say, 12 chunks.
+2. Review 3 of them. Wait ten minutes. Read the findings. Decide whether it is worth it.
+3. Come back later and review a few more. Repeat until pending hits zero.
 
 <details>
-<summary>Non-interactive commands, for scripts and agents</summary>
+<summary>Subcommands, for scripts and agents</summary>
 
 ```bash
 curc plan  --scope src,tests --json   # survey and chunk (free)
@@ -55,54 +70,49 @@ curc clean --yes                      # remove curc worktrees and branches
 curc unlock                           # clear a lock a dead supervisor left behind
 ```
 
-`--chunks` takes **chunk ids** — the numbers in the `#` column. They are monotonic
-across re-plans and never reused, so after the first re-plan they no longer match
-positions in the list; an id that is not in the plan is refused rather than substituted.
-`--scope` accepts `src,tests` or repeated `--scope` flags.
+`--chunks` takes **chunk ids**, the numbers in the `#` column. They never get reused
+across re-plans, so after the first re-plan they stop matching list positions. An id
+that is not in the plan is refused rather than substituted.
 
 `--yes` is the only way a billed run starts without a terminal. Every prompt in the
-guided flow has a flag equivalent, and curc errors with the flag name rather than
-hanging when it has no terminal to ask on.
+guided flow has a flag; when there is no terminal to ask on, curc errors with the flag
+name instead of hanging.
+
+`--force` re-runs a chunk that may already have been billed (a review that failed,
+timed out, or lost its supervisor still consumed a run). curc refuses those without it.
 </details>
 
-## How it works
+## How the chunk trick works
 
-Reviewing "just these files" is not something a diff-based reviewer can express. So for
-each chunk curc builds a **pair of commits**:
+For each chunk curc builds two commits:
 
 ```
-curc/base-0007    an orphan commit — the whole repo MINUS the chunk's files
+curc/base-0007    orphan commit: the whole repo MINUS the chunk's files
 curc/chunk-0007   the whole repo, parented on that base
 ```
 
-The diff between them is exactly the chunk, as pure additions — while the sandbox still
-receives the **entire repository**, so a reviewer can follow an import out of the chunk
-instead of staring at orphan files. The review runs from a throwaway worktree:
+The diff between them is exactly the chunk, as pure additions. The review runs from a
+throwaway worktree with:
 
 ```
 claude ultrareview curc/base-0007 --json --no-post
 ```
 
-Both commits are built through a scratch git index, so your index, working tree, HEAD
-and branches are never touched. Every pair is proved before use — merge-base identity,
-exact file list, additions only — and re-checked against the 500-file / 8,000-line caps
-immediately before a review is allowed to start.
+Both commits are built through a scratch git index. Your index, working tree, HEAD and
+branches are never touched. Every pair is checked before use (merge-base, exact file
+list, additions only) and re-measured against the 500-file / 8,000-line caps right
+before a review is allowed to start.
 
-## Long sweeps, and code that moves
+## Long sweeps
 
-A sweep can take months, and `main` does not stand still. Chunk numbers are therefore
-not the unit of progress — **git blob shas are.**
+`main` does not stand still for a month. curc records the **git blob sha** of every
+file it has reviewed, so on the next plan:
 
-curc records the sha of every file it has reviewed. On the next `plan`:
+- a file that moved but did not change is still covered, for free
+- an edited file gets a new sha and comes back into the plan by itself
+- chunk boundaries can shift freely, because nothing ever referred to them
 
-- a file that **moved but did not change** keeps its sha and stays covered, for free
-- a file that was **edited** gets a new sha and re-enters the plan on its own
-- **chunk boundaries can shift** freely, because nothing ever referred to them
-
-So "31 of 51 done" becomes something exact: 612 of 779 files covered, 167 remaining, 24
-chunks to go. Chunk ids are never reused, so a re-plan cannot overwrite older findings.
-
-Two byte-identical files share one sha and so share coverage — same content, same bugs.
+"31 of 51 chunks" becomes something exact: 612 of 779 files covered, 24 chunks to go.
 
 ## What it writes
 
@@ -111,31 +121,28 @@ Two byte-identical files share one sha and so share coverage — same content, s
 | `.claude/curc/ledger.json` | the plan and the coverage record |
 | `.claude/curc/findings/` | raw ultrareview output, one file per chunk |
 | `.claude/curc/logs/` | per-chunk logs and the supervisor log |
-| `.claude/curc/runs/` | one record per review |
-| `.claude/curc/queues/` | one queue per launched run |
+| `.claude/curc/runs/` | one record per review, plus the claim that says it was launched |
 | `.claude/worktrees/curc-*` | review worktrees, removed as each chunk finishes |
 
-curc offers to add `.claude/curc/` and `.claude/worktrees/` to `.gitignore`; it never
+curc offers to add `.claude/curc/` and `.claude/worktrees/` to `.gitignore`. It never
 edits the file silently. Peak footprint is three worktrees, not one per chunk.
 
 ## Safety
 
 curc never writes your index, never moves HEAD, never checks anything out in your
-working tree, never commits, pushes, or stages, and never creates or deletes a ref
+working tree, never commits, pushes or stages, and never creates or deletes a ref
 outside `refs/heads/curc/`. It always passes `--no-post`, so nothing is ever commented
 on a pull request.
 
-These are not promises, they are tests — see `test/refs.test.js`, which asserts the
-index bytes, `git status`, HEAD, the current branch, and an unstaged edit are all
-identical before and after a chunk is built, on a deliberately dirty repository.
+Those are tests, not promises: `test/refs.test.js` asserts the index bytes, `git
+status`, HEAD, the current branch and an unstaged edit are byte-identical before and
+after a chunk is built, on a deliberately dirty repo.
 
-**Nothing is reviewed twice.** A run reserves its lock before it writes anything, and
-each chunk takes an atomic claim immediately before the one call that spends money — so
-two `curc run` at once cannot both launch, and a chunk cannot be billed twice however
-that goes wrong. curc never reclaims a stale lock on its own, because two processes both
-deciding a lock is stale is exactly the failure worth paying to avoid; `curc unlock`
-clears one deliberately. A review that hangs is killed rather than holding a slot
-forever.
+**Nothing is billed twice by accident.** A run takes a lock before it writes anything,
+and each chunk takes an atomic claim immediately before the one call that spends money.
+Two `curc run` at once cannot both launch, and a chunk cannot be reviewed twice however
+that goes wrong. curc never reclaims a stale lock on its own; `curc unlock` is a
+deliberate act. A review that hangs is killed rather than holding a slot forever.
 
 curc reviews **committed** content. Uncommitted changes are not in any review, and it
 says so.
@@ -147,13 +154,13 @@ says so.
 /plugin install curc@curc
 ```
 
-The plugin adds a skill that surveys the repo, presents the cost, asks for approval, and
-— once the reviews land — triages the findings: re-reading each cited file at current
+The plugin adds a skill that surveys the repo, presents the cost, asks for approval,
+and, once the reviews land, triages the findings: re-reading each cited file at current
 HEAD, separating confirmed bugs from stale line numbers and false positives, and
 grouping by theme rather than by chunk.
 
 The skill deliberately **cannot** launch a billed run. `curc run` is left out of its
-allowed tools, so spending always takes a deliberate act from you.
+allowed tools, so spending always takes a keystroke from you.
 
 ## Environment
 
@@ -163,6 +170,10 @@ allowed tools, so spending always takes a deliberate act from you.
 | `CURC_COST_LOW` / `CURC_COST_HIGH` | correct the per-review cost band |
 | `CURC_WATCHDOG_MS` | shorten curc's own bound on a single review |
 | `NO_COLOR` | plain output |
+
+## Contributing
+
+Bug reports and pull requests welcome. See [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## License
 
