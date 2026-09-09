@@ -230,7 +230,7 @@ async function doReview (L, ledger) {
   // the claim file will refuse it unless the launch is forced. That is a
   // separate yes from the one below: spending is one decision, spending
   // twice on the same chunk is another.
-  const again = picked.filter(r => r.claimed)
+  const again = picked.filter(r => r.claimed || r.state === 'orphaned')
   let force = false
   if (again.length) {
     say('')

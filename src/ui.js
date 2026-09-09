@@ -1,6 +1,8 @@
 import { styleText } from 'node:util'
 
-const plain = () => !process.stderr.isTTY || process.env.NO_COLOR || process.argv.includes('--no-color')
+// Painted cells go to stdout (tables) as well as stderr (talk), so colour is
+// on only when both are terminals — `curc status | less` gets plain text.
+const plain = () => !process.stdout.isTTY || !process.stderr.isTTY || process.env.NO_COLOR || process.argv.includes('--no-color')
 
 export const c = {
   dim: s => plain() ? s : styleText('dim', s),
