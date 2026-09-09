@@ -285,3 +285,39 @@ test('a stopped review reads as interrupted rather than failed', async () => {
   assert.equal(runState(rec), 'interrupted', `SIGTERM is 143, not 130 — got ${JSON.stringify(rec)}`)
   cleanup(dir)
 })
+
+/* ---- an unreadable lock file --------------------------------------------- */
+
+/**
+ * `acquire` opens the file with `wx` and then writes it, so for a moment the
+ * lock exists and is empty — and a crash in that moment leaves it that way.
+ * Reading an empty or corrupt lock as "no lock" used to send `acquire` into
+ * unbounded recursion, and let `plan` and `clean --yes` walk past it.
+ */
+test('an empty lock file is held while fresh, stale once quiet, and never a stack overflow', () => {
+  const { dir } = tmpRepo({ 'src/a.js': lines(20, 'a') })
+  const L = layout(dir)
+  curc(dir, ['plan', '--json'])
+  fs.writeFileSync(L.lock, '')
+
+  const fresh = lockState(L)
+  assert.equal(fresh.state, 'unreadable')
+  assert.equal(fresh.alive, true, 'a fresh unreadable lock is somebody mid-acquire')
+  const refused = acquire(L, 'r-new', 1)
+  assert.equal(refused.ok, false)
+  assert.equal(refused.reason, 'in-flight')
+
+  const busy = curc(dir, ['run', '--chunks', 'all', '--yes'])
+  assert.equal(busy.code, 6, 'run refuses rather than recursing')
+
+  const old = new Date(Date.now() - 5 * 60_000)
+  fs.utimesSync(L.lock, old, old)
+  const quiet = lockState(L)
+  assert.equal(quiet.state, 'stale')
+  assert.equal(quiet.alive, false)
+
+  const cleared = curc(dir, ['unlock'])
+  assert.equal(cleared.code, 0)
+  assert.equal(fs.existsSync(L.lock), false, 'unlock removes a lock it cannot read')
+  cleanup(dir)
+})

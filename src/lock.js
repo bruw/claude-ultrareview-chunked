@@ -15,12 +15,24 @@ export const HEARTBEAT_MS = 15_000
 /** How long a heartbeat may go quiet before a dead-looking holder is stale. */
 export const STALE_AFTER_S = 60
 
+/**
+ * The lock file, or null only when there is no file at all.
+ *
+ * A file that exists but will not parse is not "no lock". It is what the
+ * `wx`-then-write window in `acquire` looks like from another process, and
+ * what a crash inside that window leaves behind — and reading it as absent
+ * used to make `acquire` recurse until the stack ran out, while `plan` and
+ * `clean` walked straight past it.
+ */
 const read = L => {
+  let raw
+  try { raw = fs.readFileSync(L.lock, 'utf8') } catch { return null }
+  const ageSec = Math.max(0, (Date.now() - fs.statSync(L.lock).mtimeMs) / 1000)
   try {
-    const rec = JSON.parse(fs.readFileSync(L.lock, 'utf8'))
-    const ageSec = Math.max(0, (Date.now() - fs.statSync(L.lock).mtimeMs) / 1000)
-    return { rec, ageSec }
-  } catch { return null }
+    const rec = JSON.parse(raw)
+    if (rec && typeof rec === 'object') return { rec, ageSec, unreadable: false }
+  } catch {}
+  return { rec: {}, ageSec, unreadable: true }
 }
 
 /**
@@ -49,8 +61,11 @@ export function pidAlive (pid) {
 export function lockState (L) {
   const r = read(L)
   if (!r) return null
-  const { rec, ageSec } = r
-  const alive = pidAlive(rec.pid)
+  const { rec, ageSec, unreadable } = r
+  // An unreadable holder has no pid to check. Nobody can heartbeat it either —
+  // `owns` cannot match a runId that is not there — so a fresh one is a
+  // process mid-acquire and a quiet one is a leftover: the same two answers.
+  const alive = unreadable ? !(ageSec > STALE_AFTER_S) : pidAlive(rec.pid)
   const quiet = ageSec > STALE_AFTER_S
   const stale = !alive && quiet
   return {
@@ -59,7 +74,7 @@ export function lockState (L) {
     startedAt: rec.startedAt ?? null,
     pidAlive: alive,
     heartbeatAgeSec: Math.round(ageSec),
-    state: stale ? 'stale' : 'running',
+    state: stale ? 'stale' : unreadable ? 'unreadable' : 'running',
     // Anything not provably dead counts as in flight.
     alive: !stale,
     // True once a heartbeat is late enough to be worth mentioning, whether or
@@ -78,7 +93,7 @@ export function lockState (L) {
  * check-then-unlink atomic — so the only honest options are a race or a
  * refusal, and at these prices it is a refusal. `curc unlock` is the way out.
  */
-export function acquire (L, runId, pid) {
+export function acquire (L, runId, pid, { retried = false } = {}) {
   try {
     const fd = fs.openSync(L.lock, 'wx')
     fs.writeFileSync(fd, JSON.stringify({ runId, pid, startedAt: new Date().toISOString() }))
@@ -86,14 +101,21 @@ export function acquire (L, runId, pid) {
   } catch (e) {
     if (e.code !== 'EEXIST') throw e
     const holder = lockState(L)
-    if (!holder) return acquire(L, runId, pid)   // vanished between open and read
+    // Vanished between open and read: someone released it. One more try, not
+    // a loop — a lock that keeps appearing and vanishing is somebody else's.
+    if (!holder) {
+      if (retried) return { ok: false, reason: 'contended', holder: null, remedy: 'the lock is changing hands — try again' }
+      return acquire(L, runId, pid, { retried: true })
+    }
     return {
       ok: false,
       reason: holder.state === 'stale' ? 'stale' : 'in-flight',
       holder,
       remedy: holder.state === 'stale'
         ? `no supervisor is running, but a lock from ${holder.runId ?? 'an earlier run'} is still there — \`curc unlock\` to clear it`
-        : `run ${holder.runId ?? '?'} is in flight (pid ${holder.pid ?? '?'}) — \`curc status\`, or \`curc stop\``
+        : holder.state === 'unreadable'
+          ? 'a lock file is being written right now — try again in a moment'
+          : `run ${holder.runId ?? '?'} is in flight (pid ${holder.pid ?? '?'}) — \`curc status\`, or \`curc stop\``
     }
   }
 }
