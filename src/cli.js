@@ -251,7 +251,7 @@ async function cmdRun (L, v) {
     const risky = rows.filter(r => ids.includes(r.id) && (r.claimed || ['running', 'queued', 'orphaned'].includes(r.state)))
     if (risky.length) {
       say(c.red(`${risky.length} chunk(s) may already have been billed:`))
-      for (const r of risky) say(`  ${r.label}  ${r.state}`)
+      for (const r of risky) say(`  ${r.label}  ${r.state}${r.claimed && !['running', 'queued'].includes(r.state) ? '  (a review was launched for this content before)' : ''}`)
       say('`curc status` to look, or --force to review them again anyway.')
       return 6
     }
