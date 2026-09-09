@@ -7,7 +7,7 @@ export const LEDGER_VERSION = 1
 export function emptyLedger () {
   return {
     version: LEDGER_VERSION,
-    tool: 'curc',
+    tool: 'claude-ultrareview-chunked',
     createdAt: new Date().toISOString(),
     updatedAt: null,
     snapshot: null,
@@ -33,7 +33,7 @@ export function readLedger (L) {
  *
  * `readLedger` collapses "never planned" and "planned by a different version"
  * into the same null, which turned a sweep's whole coverage history into "no
- * plan yet — run `curc plan`". The difference is worth a sentence: one is a
+ * plan yet — run `claude-ultrareview-chunked plan`". The difference is worth a sentence: one is a
  * fresh start, the other is a record the user paid for.
  */
 export function ledgerStatus (L) {
@@ -101,7 +101,7 @@ export function runState (rec) {
     // The watchdog says so explicitly, and it must be asked first: killing a
     // review looks exactly like any other signalled death from the outside.
     if (rec.reason === 'timeout') return 'timeout'
-    // Stopped, rather than broken. SIGINT exits 130, but `curc stop` sends
+    // Stopped, rather than broken. SIGINT exits 130, but `claude-ultrareview-chunked stop` sends
     // SIGTERM — 143, or no code at all and a signal instead, depending on how
     // the child was reaped.
     if (rec.signal || rec.exitCode === 130 || rec.exitCode === 143) return 'interrupted'

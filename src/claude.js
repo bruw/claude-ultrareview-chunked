@@ -1,11 +1,11 @@
 import { spawnSync, spawn } from 'node:child_process'
 
 /**
- * The only place curc spawns `claude`. One boundary means the test suite has
- * exactly one thing to stand in for — see CURC_CLAUDE_BIN.
+ * The only place claude-ultrareview-chunked spawns `claude`. One boundary means the test suite has
+ * exactly one thing to stand in for — see CLAUDE_ULTRAREVIEW_CHUNKED_CLAUDE_BIN.
  */
 export function claudeBin () {
-  return process.env.CURC_CLAUDE_BIN || 'claude'
+  return process.env.CLAUDE_ULTRAREVIEW_CHUNKED_CLAUDE_BIN || 'claude'
 }
 
 function run (args, opts = {}) {

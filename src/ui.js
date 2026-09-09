@@ -1,7 +1,7 @@
 import { styleText } from 'node:util'
 
 // Painted cells go to stdout (tables) as well as stderr (talk), so colour is
-// on only when both are terminals — `curc status | less` gets plain text.
+// on only when both are terminals — `claude-ultrareview-chunked status | less` gets plain text.
 const plain = () => !process.stdout.isTTY || !process.stderr.isTTY || process.env.NO_COLOR || process.argv.includes('--no-color')
 
 export const c = {
@@ -65,8 +65,8 @@ const band = (env, fallback) => {
   const n = Number(raw)
   return raw !== undefined && Number.isFinite(n) && n >= 0 ? n : fallback
 }
-export const COST_LOW = band('CURC_COST_LOW', 5)
-export const COST_HIGH = band('CURC_COST_HIGH', 25)
+export const COST_LOW = band('CLAUDE_ULTRAREVIEW_CHUNKED_COST_LOW', 5)
+export const COST_HIGH = band('CLAUDE_ULTRAREVIEW_CHUNKED_COST_HIGH', 25)
 
 /** The one source of the cost figures, so no caller can quote its own. */
 export function costRange (n) {

@@ -123,7 +123,7 @@ function pathspecs (values) {
 /**
  * Why a --chunks spec selected nothing usable, or null if it is fine.
  *
- * An unknown id is refused rather than skipped: every number curc prints is a
+ * An unknown id is refused rather than skipped: every number claude-ultrareview-chunked prints is a
  * chunk id, so a spec naming one that is not there means the caller and the
  * plan disagree — and quietly reviewing the rest bills for chunks nobody chose.
  */
@@ -150,7 +150,7 @@ async function cmdPlan (L, v) {
     writeLedger(L, next)
     return { s, next }
   })
-  if (!r.ok) { say(c.red(r.remedy ?? 'a run is in flight — `curc stop` first')); return 6 }
+  if (!r.ok) { say(c.red(r.remedy ?? 'a run is in flight — `claude-ultrareview-chunked stop` first')); return 6 }
   const { s, next } = r.value
 
   if (v.json) {
@@ -180,13 +180,13 @@ async function cmdPlan (L, v) {
 function noLedger (L) {
   const st = ledgerStatus(L)
   if (st.state === 'version-mismatch') {
-    return `the ledger here is version ${st.found ?? '?'} and this curc writes ${st.expected}, ` +
-      'so its coverage cannot be read — `curc plan` will start a fresh one'
+    return `the ledger here is version ${st.found ?? '?'} and this claude-ultrareview-chunked writes ${st.expected}, ` +
+      'so its coverage cannot be read — `claude-ultrareview-chunked plan` will start a fresh one'
   }
   if (st.state === 'unreadable') {
-    return 'the ledger here could not be parsed — `curc plan` will start a fresh one'
+    return 'the ledger here could not be parsed — `claude-ultrareview-chunked plan` will start a fresh one'
   }
-  return 'no plan yet — run `curc plan`'
+  return 'no plan yet — run `claude-ultrareview-chunked plan`'
 }
 
 function cmdStatus (L, v) {
@@ -214,20 +214,20 @@ function cmdFindings (L, v) {
   const all = collectFindings(L, ledger, ids)
   if (v.json) { out(JSON.stringify(all, null, 2)); return 0 }
   say(`${all.length} finding(s)`)
-  for (const f of all) out(sanitize(`  [chunk ${f._curc.chunkId}] ${f.title ?? f.summary ?? JSON.stringify(f).slice(0, 120)}`))
+  for (const f of all) out(sanitize(`  [chunk ${f._chunkedReview.chunkId}] ${f.title ?? f.summary ?? JSON.stringify(f).slice(0, 120)}`))
   return 0
 }
 
 async function cmdRun (L, v) {
   const ledger = readLedger(L)
-  if (!ledger?.chunks?.length) { say(c.yellow('nothing planned — run `curc plan`')); return 0 }
+  if (!ledger?.chunks?.length) { say(c.yellow('nothing planned — run `claude-ultrareview-chunked plan`')); return 0 }
 
   const pre = preflight(L.root, { ledger, forRun: true })
   if (!pre.ok) {
     for (const ck of pre.checks.filter(x => !x.ok)) say(`${c.red('✗')} ${ck.name}: ${ck.detail}\n  → ${ck.remedy}`)
     return pre.exitCode
   }
-  if (lockHolder(L)?.alive) { say(c.red('a run is already in flight — `curc status`')); return 6 }
+  if (lockHolder(L)?.alive) { say(c.red('a run is already in flight — `claude-ultrareview-chunked status`')); return 6 }
 
   const rows = statusRows(L, ledger)
   const planned = rows.map(r => r.id)
@@ -244,7 +244,7 @@ async function cmdRun (L, v) {
   // A chunk that is queued, or that has ever been launched — running,
   // orphaned, failed, timed out, interrupted — may already have been paid for:
   // a review that starts and then dies still consumes a run, and the cloud
-  // side does not care that curc lost track. Without --force the claim file
+  // side does not care that claude-ultrareview-chunked lost track. Without --force the claim file
   // refuses the spend anyway; saying so here is better than watching a chunk
   // come back "already-claimed".
   if (!v.force) {
@@ -252,7 +252,7 @@ async function cmdRun (L, v) {
     if (risky.length) {
       say(c.red(`${risky.length} chunk(s) may already have been billed:`))
       for (const r of risky) say(`  ${r.label}  ${r.state}${r.claimed && !['running', 'queued'].includes(r.state) ? '  (a review was launched for this content before)' : ''}`)
-      say('`curc status` to look, or --force to review them again anyway.')
+      say('`claude-ultrareview-chunked status` to look, or --force to review them again anyway.')
       return 6
     }
   }
@@ -287,14 +287,14 @@ async function cmdRun (L, v) {
 
   const { runId, pid } = started
   if (v.json) out(JSON.stringify({ runId, supervisorPid: pid, chunks: ids, costEstimateUsd: costRange(ids.length) }, null, 2))
-  else say(c.green(`started ${runId}`) + c.dim(` (pid ${pid}) — \`curc status\` to follow`))
+  else say(c.green(`started ${runId}`) + c.dim(` (pid ${pid}) — \`claude-ultrareview-chunked status\` to follow`))
   return 0
 }
 
 /**
  * Clear a lock nobody is using.
  *
- * curc never reclaims a lock on its own: the check-then-unlink that would be
+ * claude-ultrareview-chunked never reclaims a lock on its own: the check-then-unlink that would be
  * needed cannot be made atomic, and two supervisors both deciding a lock is
  * stale is a double-billed sweep. So a wedged repo is cleared here, by someone
  * who can see the holder is gone.
@@ -304,7 +304,7 @@ function cmdUnlock (L, v) {
   if (!held) { say(c.dim('no lock to clear')); return 0 }
   if (held.alive && !v.yes) {
     say(c.red(`run ${held.runId ?? '?'} still looks alive (pid ${held.pid ?? '?'}, heartbeat ${held.heartbeatAgeSec}s ago)`))
-    say('`curc stop` first — or `curc unlock --yes` if you are certain it is gone.')
+    say('`claude-ultrareview-chunked stop` first — or `claude-ultrareview-chunked unlock --yes` if you are certain it is gone.')
     return 6
   }
   const r = unlock(L)
@@ -319,11 +319,11 @@ function cmdStop (L) {
 }
 
 function cmdClean (L, v) {
-  if (lockHolder(L)?.alive) { say(c.red('a run is in flight — `curc stop` first')); return 6 }
+  if (lockHolder(L)?.alive) { say(c.red('a run is in flight — `claude-ultrareview-chunked stop` first')); return 6 }
   const { refs, worktreeDirs } = sweepable(L)
   if (!refs.length && !worktreeDirs.length) { say(c.dim('nothing to clean')); return 0 }
   if (!v.yes) {
-    say(`${refs.length} curc/ branch(es) and ${worktreeDirs.length} worktree(s) would be removed. Pass --yes.`)
+    say(`${refs.length} claude-ultrareview-chunked/ branch(es) and ${worktreeDirs.length} worktree(s) would be removed. Pass --yes.`)
     say(c.dim('findings and the ledger are kept'))
     return 5
   }
@@ -337,16 +337,16 @@ function cmdClean (L, v) {
 }
 
 function usage () {
-  out(`curc ${VERSION} — chunked ultrareview for whole codebases (unofficial)
+  out(`claude-ultrareview-chunked ${VERSION} — chunked ultrareview for whole codebases (unofficial)
 
-  curc                       guided, interactive — start here
-  curc plan   [--scope s]    survey and chunk the repo (free)
-  curc run    --chunks 3-5   launch reviews  ${c.red('(billed)')}  — needs --yes
-  curc status                what is planned, running, done
-  curc findings [--json]     findings from completed chunks
-  curc stop                  stop the run in flight
-  curc clean  --yes          remove curc worktrees and branches
-  curc unlock                clear a lock left behind by a dead supervisor
+  claude-ultrareview-chunked                       guided, interactive — start here
+  claude-ultrareview-chunked plan   [--scope s]    survey and chunk the repo (free)
+  claude-ultrareview-chunked run    --chunks 3-5   launch reviews  ${c.red('(billed)')}  — needs --yes
+  claude-ultrareview-chunked status                what is planned, running, done
+  claude-ultrareview-chunked findings [--json]     findings from completed chunks
+  claude-ultrareview-chunked stop                  stop the run in flight
+  claude-ultrareview-chunked clean  --yes          remove claude-ultrareview-chunked worktrees and branches
+  claude-ultrareview-chunked unlock                clear a lock left behind by a dead supervisor
 
   --chunks    chunk ids, the numbers in the # column: 3, 3-5, 3,7, all
   --scope     --scope src,tests  or  --scope src --scope tests

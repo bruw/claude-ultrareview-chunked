@@ -1,11 +1,11 @@
 import path from 'node:path'
 import fs from 'node:fs'
 
-export const REF_PREFIX = 'curc'
+export const REF_PREFIX = 'claude-ultrareview-chunked'
 
-/** Everything curc writes into a target repo, in one place. */
+/** Everything claude-ultrareview-chunked writes into a target repo, in one place. */
 export function layout (root) {
-  const home = path.join(root, '.claude', 'curc')
+  const home = path.join(root, '.claude', 'claude-ultrareview-chunked')
   return {
     root,
     home,
@@ -18,7 +18,7 @@ export function layout (root) {
     tmp: path.join(home, 'tmp'),
     supervisorLog: path.join(home, 'logs', 'supervisor.log'),
     worktrees: path.join(root, '.claude', 'worktrees'),
-    worktreeFor: id => path.join(root, '.claude', 'worktrees', `curc-${pad(id)}`),
+    worktreeFor: id => path.join(root, '.claude', 'worktrees', `claude-ultrareview-chunked-${pad(id)}`),
     baseRef: id => `${REF_PREFIX}/base-${pad(id)}`,
     chunkRef: id => `${REF_PREFIX}/chunk-${pad(id)}`,
     findingsFor: id => path.join(home, 'findings', `${pad(id)}.json`),

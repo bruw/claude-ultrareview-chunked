@@ -1,12 +1,12 @@
 {
-  "name": "curc",
+  "name": "claude-ultrareview-chunked",
   "version": "0.3.0",
   "description": "Chunked whole-codebase sweeps with Claude Code's ultrareview: slices a repository into diff-sized chunks, drives one cloud review per chunk, and triages the findings.",
   "author": {
     "name": "bruw"
   },
-  "homepage": "https://github.com/bruw/curc",
-  "repository": "https://github.com/bruw/curc",
+  "homepage": "https://github.com/bruw/claude-ultrareview-chunked",
+  "repository": "https://github.com/bruw/claude-ultrareview-chunked",
   "license": "MIT",
   "keywords": [
     "code-review",

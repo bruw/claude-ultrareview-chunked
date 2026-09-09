@@ -97,7 +97,7 @@ export function parseSpec (spec, len) {
 /**
  * "1,3", "2-5", "all" → chunk ids, plus whatever named no chunk.
  *
- * Ids, never positions. Every table curc prints is headed by the chunk id, so
+ * Ids, never positions. Every table claude-ultrareview-chunked prints is headed by the chunk id, so
  * the number a person reads off the screen has to be the number that selects
  * that chunk. An id that is not in the plan is an error rather than a silent
  * substitution, because the substitution bills a review of something they did

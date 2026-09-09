@@ -1,13 +1,13 @@
-# Contributing to curc
+# Contributing to claude-ultrareview-chunked
 
-Thanks for looking. curc is small on purpose: ~2,500 lines, no runtime dependencies,
+Thanks for looking. claude-ultrareview-chunked is small on purpose: ~2,500 lines, no runtime dependencies,
 one linter, one test runner. Keep it that way and most PRs will be easy to take.
 
 ## Setup
 
 ```bash
-git clone https://github.com/bruw/curc
-cd curc
+git clone https://github.com/bruw/claude-ultrareview-chunked
+cd claude-ultrareview-chunked
 npm install          # only pulls in the linter
 npm test
 npm run lint
@@ -22,16 +22,16 @@ Nothing in the suite may ever call the real `claude`.
 **Money is the design constraint.** Every review is $5–$25 of someone's credits. Any
 change that touches launching, locking, claiming, or the consent prompts needs a test
 that shows the failure mode it guards against, and the commit message should say what
-the money-losing scenario was. Fail closed: when curc cannot tell whether a chunk was
+the money-losing scenario was. Fail closed: when claude-ultrareview-chunked cannot tell whether a chunk was
 billed, it refuses and names the flag, it does not guess.
 
 **Never touch the user's repo.** No writes to the index, HEAD, the working tree, or
-any ref outside `refs/heads/curc/`. `test/refs.test.js` enforces this byte-for-byte;
+any ref outside `refs/heads/claude-ultrareview-chunked/`. `test/refs.test.js` enforces this byte-for-byte;
 if your change makes it fail, the change is wrong, not the test.
 
 **No runtime dependencies.** `package.json` has none and `npx -y claude-ultrareview-chunked@latest` is the
 install path. If you need something, write it; if it is too big to write, it is
-probably too big for curc.
+probably too big for claude-ultrareview-chunked.
 
 **stdout is the answer, stderr is the conversation.** `--json` output goes to stdout
 and nothing else does. Every prompt in the guided flow has a flag equivalent, and a

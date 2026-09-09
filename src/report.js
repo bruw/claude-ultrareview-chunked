@@ -76,19 +76,19 @@ export function collectFindings (L, ledger, ids = null) {
     let parsed = null
     const raw = fs.readFileSync(p, 'utf8')
     try { parsed = JSON.parse(raw) } catch {
-      out.push({ _curc: { chunkId: a.id, parseError: true, findingsPath: path.relative(L.root, p) } })
+      out.push({ _chunkedReview: { chunkId: a.id, parseError: true, findingsPath: path.relative(L.root, p) } })
       continue
     }
     const list = Array.isArray(parsed)
       ? parsed
       : [parsed?.findings, parsed?.bugs, parsed?.results].find(Array.isArray)
     if (!list) {
-      out.push({ _curc: { chunkId: a.id, parseError: true, findingsPath: path.relative(L.root, p) } })
+      out.push({ _chunkedReview: { chunkId: a.id, parseError: true, findingsPath: path.relative(L.root, p) } })
       continue
     }
     const run = readRun(L, a.id)
     for (const f of list) {
-      out.push({ ...f, _curc: { chunkId: a.id, snapshot: a.snapshot, reviewedAt: run?.finishedAt ?? a.at, sessionUrl: run?.sessionUrl ?? null } })
+      out.push({ ...f, _chunkedReview: { chunkId: a.id, snapshot: a.snapshot, reviewedAt: run?.finishedAt ?? a.at, sessionUrl: run?.sessionUrl ?? null } })
     }
   }
   return out

@@ -19,8 +19,8 @@ export const DEFAULT_EXCLUDES = [
   '**/go.sum',
   '**/node_modules/**', '**/vendor/**', '**/dist/**', '**/build/**', '**/.venv/**',
   '**/__snapshots__/**', '**/*.snap',
-  // curc's own state, so a repo that commits it never pays to review it.
-  '.claude/curc/**', '.claude/worktrees/**'
+  // claude-ultrareview-chunked's own state, so a repo that commits it never pays to review it.
+  '.claude/claude-ultrareview-chunked/**', '.claude/worktrees/**'
 ]
 
 /**

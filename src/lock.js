@@ -5,7 +5,7 @@ import fs from 'node:fs'
  *
  * Everything here fails closed. A review costs $5–$25, so the expensive
  * mistake is two supervisors believing they hold the lock — not one repo that
- * needs a human to type `curc unlock`. Every judgement below is biased
+ * needs a human to type `claude-ultrareview-chunked unlock`. Every judgement below is biased
  * accordingly, and the reasoning is written down because the previous version
  * had this predicate implemented twice, in two files, with two different
  * answers.
@@ -81,7 +81,7 @@ export function lockState (L) {
     alive: !stale,
     // True once a heartbeat is late enough to be worth mentioning, whether or
     // not the holder is reclaimable — a stalled supervisor is worth saying out
-    // loud precisely because curc will not act on it by itself.
+    // loud precisely because claude-ultrareview-chunked will not act on it by itself.
     stalled: quiet
   }
 }
@@ -93,7 +93,7 @@ export function lockState (L) {
  * two processes can both pass the staleness test, both unlink, and both
  * create. Node exposes no flock, and no arrangement of wx/mkdir/link makes
  * check-then-unlink atomic — so the only honest options are a race or a
- * refusal, and at these prices it is a refusal. `curc unlock` is the way out.
+ * refusal, and at these prices it is a refusal. `claude-ultrareview-chunked unlock` is the way out.
  */
 export function acquire (L, runId, pid, { retried = false } = {}) {
   try {
@@ -114,10 +114,10 @@ export function acquire (L, runId, pid, { retried = false } = {}) {
       reason: holder.state === 'stale' ? 'stale' : 'in-flight',
       holder,
       remedy: holder.state === 'stale'
-        ? `no supervisor is running, but a lock from ${holder.runId ?? 'an earlier run'} is still there — \`curc unlock\` to clear it`
+        ? `no supervisor is running, but a lock from ${holder.runId ?? 'an earlier run'} is still there — \`claude-ultrareview-chunked unlock\` to clear it`
         : holder.state === 'unreadable'
           ? 'a lock file is being written right now — try again in a moment'
-          : `run ${holder.runId ?? '?'} is in flight (pid ${holder.pid ?? '?'}) — \`curc status\`, or \`curc stop\``
+          : `run ${holder.runId ?? '?'} is in flight (pid ${holder.pid ?? '?'}) — \`claude-ultrareview-chunked status\`, or \`claude-ultrareview-chunked stop\``
     }
   }
 }
@@ -171,7 +171,7 @@ export async function withLock (L, who, body) {
   }
 }
 
-/** `curc unlock`: the deliberate human act that replaces automatic reclaim. */
+/** `claude-ultrareview-chunked unlock`: the deliberate human act that replaces automatic reclaim. */
 export function forceUnlock (L) {
   const holder = lockState(L)
   if (!holder) return { removed: false, reason: 'no lock file' }

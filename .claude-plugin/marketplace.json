@@ -1,13 +1,13 @@
 {
   "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
-  "name": "curc",
-  "description": "curc — Claude UltraReview Chunk. Whole-codebase ultrareview sweeps.",
+  "name": "claude-ultrareview-chunked",
+  "description": "Whole-codebase ultrareview sweeps, one diff-sized chunk at a time.",
   "owner": {
     "name": "bruw"
   },
   "plugins": [
     {
-      "name": "curc",
+      "name": "claude-ultrareview-chunked",
       "version": "0.3.0",
       "description": "Chunked whole-codebase sweeps with Claude Code's ultrareview.",
       "source": ".",
@@ -15,7 +15,7 @@
         "name": "bruw"
       },
       "category": "code-review",
-      "homepage": "https://github.com/bruw/curc"
+      "homepage": "https://github.com/bruw/claude-ultrareview-chunked"
     }
   ]
 }

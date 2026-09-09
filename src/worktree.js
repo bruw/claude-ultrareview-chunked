@@ -25,7 +25,7 @@ export function removeWorktree (L, id) {
 }
 
 /**
- * Every curc ref and worktree in the repo, whoever made them.
+ * Every claude-ultrareview-chunked ref and worktree in the repo, whoever made them.
  *
  * Counted from the repository rather than from the ledger, because the things
  * most in need of cleaning are exactly the ones the ledger has lost track of:

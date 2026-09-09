@@ -6,7 +6,7 @@ import { spawnSync } from 'node:child_process'
 const FIXED = '2026-01-01T00:00:00Z'
 
 export function tmpRepo (files) {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'curc-test-'))
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'claude-ultrareview-chunked-test-'))
   const git = (...a) => spawnSync('git', a, {
     cwd: dir,
     encoding: 'utf8',

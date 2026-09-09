@@ -6,10 +6,10 @@ import { REF_PREFIX, pad } from './paths.js'
 /** Fixed identity and dates, so the same plan always produces the same SHAs. */
 function commitEnv (snapshotDate) {
   return {
-    GIT_AUTHOR_NAME: 'curc',
-    GIT_AUTHOR_EMAIL: 'curc@localhost',
-    GIT_COMMITTER_NAME: 'curc',
-    GIT_COMMITTER_EMAIL: 'curc@localhost',
+    GIT_AUTHOR_NAME: 'claude-ultrareview-chunked',
+    GIT_AUTHOR_EMAIL: 'claude-ultrareview-chunked@localhost',
+    GIT_COMMITTER_NAME: 'claude-ultrareview-chunked',
+    GIT_COMMITTER_EMAIL: 'claude-ultrareview-chunked@localhost',
     GIT_AUTHOR_DATE: snapshotDate,
     GIT_COMMITTER_DATE: snapshotDate
   }
@@ -50,10 +50,10 @@ export function buildPair (L, { id, snapshot, snapshotTree, files }) {
 
   const cenv = commitEnv(date)
   const base = git(['commit-tree', baseTree, '-m',
-    `curc base for chunk ${pad(id)} — ${snapshot.slice(0, 8)} minus ${files.length} files`],
+    `claude-ultrareview-chunked base for chunk ${pad(id)} — ${snapshot.slice(0, 8)} minus ${files.length} files`],
   { cwd, env: cenv })
   const chunk = git(['commit-tree', snapshotTree, '-p', base, '-m',
-    `curc chunk ${pad(id)} — ${files.length} files, review against ${L.baseRef(id)}`],
+    `claude-ultrareview-chunked chunk ${pad(id)} — ${files.length} files, review against ${L.baseRef(id)}`],
   { cwd, env: cenv })
 
   git(['branch', '-f', L.baseRef(id), base], { cwd })
@@ -102,7 +102,7 @@ export function pairSize (L, id) {
   return { files, lines }
 }
 
-/** Delete one ref. Refuses anything outside the curc namespace. */
+/** Delete one ref. Refuses anything outside the claude-ultrareview-chunked namespace. */
 export function dropRef (L, ref) {
   if (!ref.startsWith(`${REF_PREFIX}/`)) throw new Error(`refusing to delete ${ref}: outside ${REF_PREFIX}/`)
   return tryGit(['branch', '-D', ref], { cwd: L.root }).code === 0

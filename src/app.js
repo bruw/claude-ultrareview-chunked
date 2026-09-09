@@ -23,13 +23,13 @@ const MAX_PER_LAUNCH = MAX_CONCURRENCY
  */
 export async function guided (cwd) {
   if (!isTTY()) {
-    say(c.red('curc needs a terminal for its guided mode.'))
-    say('Use the subcommands instead — `curc --help`.')
+    say(c.red('claude-ultrareview-chunked needs a terminal for its guided mode.'))
+    say('Use the subcommands instead — `claude-ultrareview-chunked --help`.')
     return 5
   }
 
   say('')
-  say(c.bold('curc') + c.dim(' — chunked ultrareview'))
+  say(c.bold('claude-ultrareview-chunked') + c.dim(' — chunked ultrareview'))
 
   // Claude Code has to be there before anything else is worth doing.
   const pre = preflight(cwd)
@@ -107,7 +107,7 @@ function board (L, ledger, d) {
     { align: [null, 'r', 'r'] }
   ))
   if (rows.length > shown.length) {
-    say(c.dim(`  … and ${rows.length - shown.length} more — any id is selectable, or \`curc status\` lists them all`))
+    say(c.dim(`  … and ${rows.length - shown.length} more — any id is selectable, or \`claude-ultrareview-chunked status\` lists them all`))
   }
 }
 
@@ -230,7 +230,7 @@ async function doReview (L, ledger) {
   ))
   say('')
   say(`  ${picked.length} review(s) — estimated ${c.bold(costBand(picked.length))} in usage credits.`)
-  say(c.dim('  The first 3 ultrareviews are free on Pro and Max; curc cannot see how many you have left.'))
+  say(c.dim('  The first 3 ultrareviews are free on Pro and Max; claude-ultrareview-chunked cannot see how many you have left.'))
   say(c.dim('  A run that starts and then fails still consumes one.'))
 
   // A chunk that has been launched before may already have been billed, and
@@ -303,14 +303,14 @@ function doFindings (L, ledger) {
   ))
   const unreadable = done.filter(r => r.findingsParsed === false)
   if (unreadable.length) {
-    say(c.yellow(`\n  ${unreadable.length} chunk(s) returned a payload curc could not parse: ${unreadable.map(r => r.label).join(', ')}`))
+    say(c.yellow(`\n  ${unreadable.length} chunk(s) returned a payload claude-ultrareview-chunked could not parse: ${unreadable.map(r => r.label).join(', ')}`))
     say(c.dim('  They still count as reviewed, so nothing re-bills — the raw output is on disk.'))
   }
   const all = collectFindings(L, fresh)
   say('')
   say(`  ${num(all.length)} finding(s) across ${done.length} chunk(s).`)
   say(c.dim(`  Full payloads: ${path.relative(L.root, L.findings)}/`))
-  say(c.dim('  `curc findings --json` prints them all with chunk provenance.'))
+  say(c.dim('  `claude-ultrareview-chunked findings --json` prints them all with chunk provenance.'))
 }
 
 async function doClean (L) {
@@ -318,7 +318,7 @@ async function doClean (L) {
   const { refs, worktreeDirs } = sweepable(L)
   say('')
   if (!refs.length && !worktreeDirs.length) { say(c.dim('  nothing to clean')); return }
-  say(`  ${refs.length} branch(es) under curc/, ${worktreeDirs.length} worktree(s).`)
+  say(`  ${refs.length} branch(es) under claude-ultrareview-chunked/, ${worktreeDirs.length} worktree(s).`)
   say(c.dim('  Findings and the ledger are kept.'))
   if (!await confirm('  Remove them?')) return
   // What was counted is what gets removed — see cmdClean.
@@ -332,12 +332,12 @@ async function doClean (L) {
  *
  * `.claude/worktrees/` holds up to three full checkouts of the repo during a
  * sweep. Untracked, they turn `git status` into noise, make preflight's
- * dirty-tree warning fire on curc's own output, and put a habitual
+ * dirty-tree warning fire on claude-ultrareview-chunked's own output, and put a habitual
  * `git add -A` one keystroke from staging a copy of the entire tree.
  */
 async function offerGitignore (L) {
   const gi = path.join(L.root, '.gitignore')
-  const want = ['.claude/curc/', '.claude/worktrees/']
+  const want = ['.claude/claude-ultrareview-chunked/', '.claude/worktrees/']
   let text = ''
   try { text = fs.readFileSync(gi, 'utf8') } catch {}
 
@@ -347,8 +347,8 @@ async function offerGitignore (L) {
 
   say('')
   const what = missing.map(l => c.bold(l)).join(' and ')
-  if (!await confirm(`  Add ${what} to .gitignore? ${c.dim('(curc writes its state and review worktrees there)')}`, { default: true })) return
+  if (!await confirm(`  Add ${what} to .gitignore? ${c.dim('(claude-ultrareview-chunked writes its state and review worktrees there)')}`, { default: true })) return
   fs.appendFileSync(gi, (text && !text.endsWith('\n') ? '\n' : '') +
-    `\n# curc — chunked ultrareview state\n${missing.join('\n')}\n`)
+    `\n# claude-ultrareview-chunked — chunked ultrareview state\n${missing.join('\n')}\n`)
   say(c.green(`  added ${missing.length} line(s)`))
 }

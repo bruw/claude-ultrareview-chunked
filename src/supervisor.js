@@ -10,7 +10,7 @@ import { addWorktree, removeWorktree } from './worktree.js'
 import * as claude from './claude.js'
 import * as lock from './lock.js'
 
-const BIN = fileURLToPath(new URL('../bin/curc.js', import.meta.url))
+const BIN = fileURLToPath(new URL('../bin/claude-ultrareview-chunked.js', import.meta.url))
 export const HARD_MAX_FILES = 500
 export const HARD_MAX_LINES = 8000
 
@@ -18,7 +18,7 @@ export const HARD_MAX_LINES = 8000
 export const MAX_CONCURRENCY = 3
 /** Matches `claude ultrareview --timeout <minutes>`, whose own default is 45. */
 export const DEFAULT_TIMEOUT_MIN = 45
-/** How long past claude's own deadline curc waits before killing a review. */
+/** How long past claude's own deadline claude-ultrareview-chunked waits before killing a review. */
 export const WATCHDOG_GRACE_MIN = 5
 
 /**
@@ -34,7 +34,7 @@ export function launch (L, { chunkIds, concurrency, timeout, force = false }) {
   fs.mkdirSync(L.queues, { recursive: true })
 
   // The reservation is taken here, in the parent, and before a single byte of
-  // queue or run state is written. `wx` is one atomic syscall, so two `curc
+  // queue or run state is written. `wx` is one atomic syscall, so two `claude-ultrareview-chunked
   // run --yes` a millisecond apart serialise on it — the loser has not yet
   // touched anything to undo. Checking a lock and then launching, which is
   // what this used to do, leaves a window exactly wide enough to bill twice.
@@ -63,7 +63,7 @@ export function launch (L, { chunkIds, concurrency, timeout, force = false }) {
       cwd: L.root,
       detached: true,
       stdio: ['ignore', logFd, logFd],
-      env: { ...process.env, CURC_SUPERVISOR: '1' }
+      env: { ...process.env, CLAUDE_ULTRAREVIEW_CHUNKED_SUPERVISOR: '1' }
     })
   } finally {
     // The parent's copy is no use to it; the child has its own.
@@ -97,7 +97,7 @@ const queuePath = (L, runId) => path.join(L.queues, `${runId}.json`)
 
 /** Entry point for the detached process. Never called directly by a user. */
 export async function supervise (root, runId) {
-  if (!runId) { process.stderr.write('curc __supervise: no run id\n'); return 2 }
+  if (!runId) { process.stderr.write('claude-ultrareview-chunked __supervise: no run id\n'); return 2 }
   const L = layout(root)
   ensureDirs(L)
 
@@ -197,7 +197,7 @@ async function runChunk (L, id, queue) {
 
     // The claim, not the lock, is what actually makes double-billing
     // impossible. It is one atomic `wx` immediately before the only line in
-    // curc that spends money, so however the lock reasoning above is wrong —
+    // claude-ultrareview-chunked that spends money, so however the lock reasoning above is wrong —
     // now or after some later edit — the worst outcome is a chunk that goes
     // unreviewed, never one that is paid for twice.
     const dir = addWorktree(L, id)
@@ -302,15 +302,15 @@ function claimChunk (L, id) {
 }
 
 /**
- * curc's own bound on a review, in ms — a little beyond the deadline claude
+ * claude-ultrareview-chunked's own bound on a review, in ms — a little beyond the deadline claude
  * was given, so claude gets to finish on its own terms first.
  *
- * CURC_WATCHDOG_MS overrides it outright. The real bound is the better part of
+ * CLAUDE_ULTRAREVIEW_CHUNKED_WATCHDOG_MS overrides it outright. The real bound is the better part of
  * an hour, which no test can wait for, and the same seam that makes it
  * testable also lets someone shorten it without a release.
  */
 export function watchdogMs (timeout) {
-  const override = Number(process.env.CURC_WATCHDOG_MS)
+  const override = Number(process.env.CLAUDE_ULTRAREVIEW_CHUNKED_WATCHDOG_MS)
   if (Number.isFinite(override) && override > 0) return override
   const t = Number(timeout)
   return ((Number.isInteger(t) && t > 0 ? t : DEFAULT_TIMEOUT_MIN) + WATCHDOG_GRACE_MIN) * 60_000
@@ -320,7 +320,7 @@ export function watchdogMs (timeout) {
  * Ask the supervisor to stop. Reports what actually happened rather than
  * assuming, and never negates a pid it has not checked — `-0` is a valid
  * integer and `kill(-0, …)` signals the caller's own process group, which
- * would make `curc stop` take down the shell it was typed into.
+ * would make `claude-ultrareview-chunked stop` take down the shell it was typed into.
  */
 export function stopAll (L) {
   const holder = lock.lockState(L)
@@ -339,7 +339,7 @@ function kill (pid, sig = 'SIGTERM') {
   try { process.kill(pid, sig); return true } catch { return false }
 }
 
-/** `curc unlock` — the deliberate act that replaced automatic reclaiming. */
+/** `claude-ultrareview-chunked unlock` — the deliberate act that replaced automatic reclaiming. */
 export function unlock (L) {
   return lock.forceUnlock(L)
 }

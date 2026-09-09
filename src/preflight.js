@@ -4,7 +4,7 @@ import { listRefs } from './branches.js'
 import { REF_PREFIX, pad } from './paths.js'
 
 /**
- * Everything that must hold before curc spends anything. Each result carries
+ * Everything that must hold before claude-ultrareview-chunked spends anything. Each result carries
  * its own remedy, because a check that only says "no" makes the user guess.
  */
 export function preflight (root, { ledger = null, forRun = false, claudeChecks = true } = {}) {
@@ -13,7 +13,7 @@ export function preflight (root, { ledger = null, forRun = false, claudeChecks =
     checks.push({ name, ok, detail, remedy, fatal })
 
   if (!isRepo(root)) {
-    add('git repository', false, 'curc must run inside a git repository',
+    add('git repository', false, 'claude-ultrareview-chunked must run inside a git repository',
       'cd into one, run `git init`, or pass --repo <path>')
     return { checks, ok: false, exitCode: 3 }
   }
@@ -22,22 +22,22 @@ export function preflight (root, { ledger = null, forRun = false, claudeChecks =
   const head = tryGit(['rev-parse', '--verify', 'HEAD'], { cwd: root })
   if (head.code !== 0) {
     add('HEAD', false, 'the repository has no commits',
-      'make at least one commit — curc reviews committed content')
+      'make at least one commit — claude-ultrareview-chunked reviews committed content')
     return { checks, ok: false, exitCode: 3 }
   }
   add('HEAD', true, head.stdout.trim().slice(0, 8))
 
-  if (/[/\\]\.claude[/\\]worktrees[/\\]curc-/.test(root)) {
-    add('not recursing', false, 'this is a curc worktree',
-      'run curc from the main checkout, not from one of its review worktrees')
+  if (/[/\\]\.claude[/\\]worktrees[/\\]claude-ultrareview-chunked-/.test(root)) {
+    add('not recursing', false, 'this is a claude-ultrareview-chunked worktree',
+      'run claude-ultrareview-chunked from the main checkout, not from one of its review worktrees')
     return { checks, ok: false, exitCode: 6 }
   }
 
-  // A branch literally named `curc` makes every `curc/base-NNNN` impossible —
+  // A branch literally named `claude-ultrareview-chunked` makes every `claude-ultrareview-chunked/base-NNNN` impossible —
   // git cannot have both a ref and a directory of refs at the same path — and
   // the failure otherwise surfaces per chunk, mid-run, as raw git text.
   if (tryGit(['rev-parse', '--verify', '--quiet', `refs/heads/${REF_PREFIX}`], { cwd: root }).code === 0) {
-    add('curc/ namespace', false, `a branch named \`${REF_PREFIX}\` blocks the \`${REF_PREFIX}/\` namespace`,
+    add('claude-ultrareview-chunked/ namespace', false, `a branch named \`${REF_PREFIX}\` blocks the \`${REF_PREFIX}/\` namespace`,
       `rename or delete it — git cannot hold both \`${REF_PREFIX}\` and \`${REF_PREFIX}/base-0001\``)
     return { checks, ok: false, exitCode: 3 }
   }
@@ -50,7 +50,7 @@ export function preflight (root, { ledger = null, forRun = false, claudeChecks =
   const strays = listRefs({ root }).filter(r => !known.has(r))
   if (strays.length) {
     add(`${REF_PREFIX}/ refs`, false, `${strays.length} ref(s) under ${REF_PREFIX}/ that this ledger does not own`,
-      `inspect them, then \`curc clean --yes\`: ${strays.slice(0, 3).join(', ')}${strays.length > 3 ? '…' : ''}`,
+      `inspect them, then \`claude-ultrareview-chunked clean --yes\`: ${strays.slice(0, 3).join(', ')}${strays.length > 3 ? '…' : ''}`,
       false)
   } else add(`${REF_PREFIX}/ refs`, true, 'clean')
 
@@ -61,7 +61,7 @@ export function preflight (root, { ledger = null, forRun = false, claudeChecks =
 
   if (!claude.isInstalled()) {
     add('claude code', false, `\`${claude.claudeBin()}\` not found or not runnable`,
-      'install Claude Code (https://claude.com/claude-code), or point CURC_CLAUDE_BIN at it')
+      'install Claude Code (https://claude.com/claude-code), or point CLAUDE_ULTRAREVIEW_CHUNKED_CLAUDE_BIN at it')
     return { checks, ok: false, exitCode: 4 }
   }
   add('claude code', true, claude.version() ?? 'installed')
@@ -85,12 +85,12 @@ export function preflight (root, { ledger = null, forRun = false, claudeChecks =
   if (dirty) {
     add('working tree', true,
       `${dirty.split('\n').length} uncommitted change(s) — not included in any review`,
-      'commit them first if you want them reviewed; curc reviews HEAD', false)
+      'commit them first if you want them reviewed; claude-ultrareview-chunked reviews HEAD', false)
   } else add('working tree', true, 'clean')
 
   if (forRun && process.platform === 'win32') {
     add('platform', false, 'background runs are POSIX-only in this version',
-      'run curc under WSL — the supervisor needs POSIX process groups')
+      'run claude-ultrareview-chunked under WSL — the supervisor needs POSIX process groups')
   }
 
   return finish(checks)

@@ -10,10 +10,10 @@
     "git",
     "cli"
   ],
-  "homepage": "https://github.com/bruw/curc",
+  "homepage": "https://github.com/bruw/claude-ultrareview-chunked",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/bruw/curc.git"
+    "url": "git+https://github.com/bruw/claude-ultrareview-chunked.git"
   },
   "license": "MIT",
   "author": {
@@ -21,7 +21,7 @@
   },
   "type": "module",
   "bin": {
-    "curc": "bin/curc.js"
+    "claude-ultrareview-chunked": "bin/claude-ultrareview-chunked.js"
   },
   "files": [
     "bin",

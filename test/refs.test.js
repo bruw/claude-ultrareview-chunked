@@ -10,10 +10,10 @@ import { git, headSha, treeOf } from '../src/git.js'
 import { fileURLToPath } from 'node:url'
 import { spawnSync } from 'node:child_process'
 
-const BIN = fileURLToPath(new URL('../bin/curc.js', import.meta.url))
+const BIN = fileURLToPath(new URL('../bin/claude-ultrareview-chunked.js', import.meta.url))
 const FAKE = fileURLToPath(new URL('./helpers/fake-claude.js', import.meta.url))
-const curcBin = (dir, args) => spawnSync(process.execPath, [BIN, ...args], {
-  cwd: dir, encoding: 'utf8', env: { ...process.env, CURC_CLAUDE_BIN: FAKE, NO_COLOR: '1' }
+const runCli = (dir, args) => spawnSync(process.execPath, [BIN, ...args], {
+  cwd: dir, encoding: 'utf8', env: { ...process.env, CLAUDE_ULTRAREVIEW_CHUNKED_CLAUDE_BIN: FAKE, NO_COLOR: '1' }
 })
 const L2 = dir => { const l = layout(dir); ensureDirs(l); return l }
 
@@ -118,14 +118,14 @@ test('building the same chunk twice yields the same commits', () => {
   cleanup(dir)
 })
 
-test('dropPair removes only the curc namespace', () => {
+test('dropPair removes only the claude-ultrareview-chunked namespace', () => {
   const { dir, L, g } = fixture()
   const snapshot = headSha(dir)
   buildPair(L, { id: 3, snapshot, snapshotTree: treeOf(dir, snapshot), files: chunkOf(L, ['src/a.js']) })
   g('branch', 'feature/keep-me')
   dropPair(L, 3)
   const branches = g('for-each-ref', '--format=%(refname:short)', 'refs/heads/').stdout.split('\n')
-  assert.ok(!branches.includes('curc/base-0003'))
+  assert.ok(!branches.includes('claude-ultrareview-chunked/base-0003'))
   assert.ok(branches.includes('feature/keep-me'))
   cleanup(dir)
 })
@@ -140,45 +140,45 @@ test('clean removes the stray refs it counts, not just the ones the ledger knows
   const snapshot = headSha(dir)
   buildPair(L2(dir), { id: 1, snapshot, snapshotTree: treeOf(dir, snapshot), files: chunkOf(L2(dir), ['src/a.js']) })
   // A pair from an earlier numbering, of the kind a re-plan leaves behind.
-  g('branch', 'curc/base-9999', 'HEAD')
-  g('branch', 'curc/chunk-9999', 'HEAD')
+  g('branch', 'claude-ultrareview-chunked/base-9999', 'HEAD')
+  g('branch', 'claude-ultrareview-chunked/chunk-9999', 'HEAD')
   g('branch', 'feature/keep-me')
 
-  const r = curcBin(dir, ['clean', '--yes'])
+  const r = runCli(dir, ['clean', '--yes'])
   assert.equal(r.status, 0)
-  assert.equal(g('for-each-ref', '--format=%(refname:short)', 'refs/heads/curc/').stdout.trim(), '')
+  assert.equal(g('for-each-ref', '--format=%(refname:short)', 'refs/heads/claude-ultrareview-chunked/').stdout.trim(), '')
   assert.match(g('for-each-ref', '--format=%(refname:short)', 'refs/heads/').stdout, /feature\/keep-me/)
   cleanup(dir)
 })
 
 test('clean reports nothing to do when there is nothing, rather than "cleaned"', () => {
   const { dir } = fixture()
-  const r = curcBin(dir, ['clean', '--yes'])
+  const r = runCli(dir, ['clean', '--yes'])
   assert.equal(r.status, 0)
   assert.match(r.stderr, /nothing to clean/)
   cleanup(dir)
 })
 
-test('a branch named curc is caught before any pair is built', () => {
+test('a branch named claude-ultrareview-chunked is caught before any pair is built', () => {
   const { dir, g } = fixture()
-  g('branch', 'curc')
-  const r = curcBin(dir, ['plan', '--json'])
+  g('branch', 'claude-ultrareview-chunked')
+  const r = runCli(dir, ['plan', '--json'])
   assert.notEqual(r.status, 0)
-  assert.match(r.stderr, /blocks the `curc\/` namespace/)
-  assert.equal(g('for-each-ref', '--format=%(refname:short)', 'refs/heads/curc/').stdout.trim(), '')
+  assert.match(r.stderr, /blocks the `claude-ultrareview-chunked\/` namespace/)
+  assert.equal(g('for-each-ref', '--format=%(refname:short)', 'refs/heads/claude-ultrareview-chunked/').stdout.trim(), '')
   cleanup(dir)
 })
 
 test('the stray-ref check runs for plan, not only when claude is probed', async () => {
   const { dir, g } = fixture()
-  g('branch', 'curc/base-9999', 'HEAD')
+  g('branch', 'claude-ultrareview-chunked/base-9999', 'HEAD')
   // plan asks for the repository checks only, and used to skip this entirely.
   const { preflight } = await import('../src/preflight.js')
   const pre = preflight(dir, { claudeChecks: false })
-  const refs = pre.checks.find(c => c.name === 'curc/ refs')
+  const refs = pre.checks.find(c => c.name === 'claude-ultrareview-chunked/ refs')
   assert.ok(refs, 'the check must be present without the claude probes')
   assert.equal(refs.ok, false)
-  assert.match(refs.remedy, /curc clean --yes/)
+  assert.match(refs.remedy, /claude-ultrareview-chunked clean --yes/)
   cleanup(dir)
 })
 
@@ -199,7 +199,7 @@ test('the plan is HEAD, not the index: staged edits, additions and removals are 
   git('add', 'src/a.js', 'src/new.js')
   git('rm', '-q', '--cached', 'src/b.js')
 
-  const plan = JSON.parse(curcBin(dir, ['plan', '--json']).stdout)
+  const plan = JSON.parse(runCli(dir, ['plan', '--json']).stdout)
   const paths = plan.chunks.flatMap(c => c.paths).sort()
   assert.deepEqual(paths, ['src/a.js', 'src/b.js'], 'staged additions and removals are not in HEAD')
   assert.equal(plan.totals.lines, 40, 'a staged edit is measured at its committed size')
@@ -210,6 +210,6 @@ test('the plan is HEAD, not the index: staged edits, additions and removals are 
   assert.equal(a.blob, headA, 'coverage will be keyed by the committed blob')
 
   // And the pair still proves, with the index in this state.
-  assert.equal(curcBin(dir, ['run', '--chunks', 'all', '--yes', '--dry-run']).status, 0)
+  assert.equal(runCli(dir, ['run', '--chunks', 'all', '--yes', '--dry-run']).status, 0)
   cleanup(dir)
 })

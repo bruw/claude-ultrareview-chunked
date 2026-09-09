@@ -7,12 +7,12 @@ import { spawnSync } from 'node:child_process'
 import { tmpRepo, lines, cleanup } from './helpers/tmprepo.js'
 import { resolveIds, parseSpec } from '../src/prompt.js'
 
-const BIN = fileURLToPath(new URL('../bin/curc.js', import.meta.url))
+const BIN = fileURLToPath(new URL('../bin/claude-ultrareview-chunked.js', import.meta.url))
 const FAKE = fileURLToPath(new URL('./helpers/fake-claude.js', import.meta.url))
 
-const curc = (dir, args, env = {}) => {
+const runCli = (dir, args, env = {}) => {
   const r = spawnSync(process.execPath, [BIN, ...args], {
-    cwd: dir, encoding: 'utf8', env: { ...process.env, CURC_CLAUDE_BIN: FAKE, NO_COLOR: '1', ...env }
+    cwd: dir, encoding: 'utf8', env: { ...process.env, CLAUDE_ULTRAREVIEW_CHUNKED_CLAUDE_BIN: FAKE, NO_COLOR: '1', ...env }
   })
   return { code: r.status, out: r.stdout ?? '', err: r.stderr ?? '' }
 }
@@ -21,8 +21,8 @@ const curc = (dir, args, env = {}) => {
 
 test('--scope accepts both documented shapes and they agree', () => {
   const { dir } = tmpRepo({ 'src/a.js': lines(5), 'tests/b.js': lines(5), 'lib/c.js': lines(5) })
-  const comma = JSON.parse(curc(dir, ['plan', '--json', '--scope', 'src,tests']).out)
-  const repeated = JSON.parse(curc(dir, ['plan', '--json', '--scope', 'src', '--scope', 'tests']).out)
+  const comma = JSON.parse(runCli(dir, ['plan', '--json', '--scope', 'src,tests']).out)
+  const repeated = JSON.parse(runCli(dir, ['plan', '--json', '--scope', 'src', '--scope', 'tests']).out)
 
   // The comma form is what the README has always shown; it used to be read as
   // one pathspec literally named "src,tests" and quietly planned nothing.
@@ -38,8 +38,8 @@ for (const bad of ['0', '-1', 'banana', '2.5', '']) {
   test(`--concurrency ${JSON.stringify(bad)} is refused before anything launches`, () => {
     const { dir } = tmpRepo({ 'a/1.js': lines(20) })
     const log = path.join(dir, 'argv.log')
-    curc(dir, ['plan', '--json'])
-    const r = curc(dir, ['run', '--chunks', 'all', '--yes', '--concurrency', bad], { FAKE_CLAUDE_ARGV_LOG: log })
+    runCli(dir, ['plan', '--json'])
+    const r = runCli(dir, ['run', '--chunks', 'all', '--yes', '--concurrency', bad], { FAKE_CLAUDE_ARGV_LOG: log })
     assert.equal(r.code, 2)
     assert.match(r.err, /--concurrency/)
     assert.ok(!fs.existsSync(log), 'nothing may be billed for a bad flag')
@@ -50,8 +50,8 @@ for (const bad of ['0', '-1', 'banana', '2.5', '']) {
 test('a non-numeric --timeout never reaches the billed command line', () => {
   const { dir } = tmpRepo({ 'a/1.js': lines(20) })
   const log = path.join(dir, 'argv.log')
-  curc(dir, ['plan', '--json'])
-  const r = curc(dir, ['run', '--chunks', 'all', '--yes', '--timeout', 'soon'], { FAKE_CLAUDE_ARGV_LOG: log })
+  runCli(dir, ['plan', '--json'])
+  const r = runCli(dir, ['run', '--chunks', 'all', '--yes', '--timeout', 'soon'], { FAKE_CLAUDE_ARGV_LOG: log })
   assert.equal(r.code, 2)
   assert.match(r.err, /--timeout/)
   assert.ok(!fs.existsSync(log))
@@ -60,7 +60,7 @@ test('a non-numeric --timeout never reaches the billed command line', () => {
 
 test('--max-files 0 is refused rather than silently ignored', () => {
   const { dir } = tmpRepo({ 'a/1.js': lines(20) })
-  const r = curc(dir, ['plan', '--json', '--max-files', '0'])
+  const r = runCli(dir, ['plan', '--json', '--max-files', '0'])
   assert.equal(r.code, 2)
   assert.match(r.err, /--max-files/)
   cleanup(dir)
@@ -70,12 +70,12 @@ test('--max-files 0 is refused rather than silently ignored', () => {
 
 test('the cost band honours its overrides and shrugs off a bad one', () => {
   const { dir } = tmpRepo({ 'a/1.js': lines(20, 'a'), 'b/1.js': lines(20, 'b') })
-  const tuned = JSON.parse(curc(dir, ['plan', '--json', '--max-lines', '25'], {
-    CURC_COST_LOW: '2', CURC_COST_HIGH: '4'
+  const tuned = JSON.parse(runCli(dir, ['plan', '--json', '--max-lines', '25'], {
+    CLAUDE_ULTRAREVIEW_CHUNKED_COST_LOW: '2', CLAUDE_ULTRAREVIEW_CHUNKED_COST_HIGH: '4'
   }).out)
   assert.deepEqual(tuned.costEstimateUsd, { low: tuned.chunks.length * 2, high: tuned.chunks.length * 4 })
 
-  const junk = JSON.parse(curc(dir, ['plan', '--json', '--max-lines', '25'], { CURC_COST_LOW: 'abc' }).out)
+  const junk = JSON.parse(runCli(dir, ['plan', '--json', '--max-lines', '25'], { CLAUDE_ULTRAREVIEW_CHUNKED_COST_LOW: 'abc' }).out)
   assert.equal(junk.costEstimateUsd.low, junk.chunks.length * 5, 'a bad override falls back, never to NaN')
   cleanup(dir)
 })
@@ -134,7 +134,7 @@ test("the scope picker's root bucket selects the root files, not the whole repo"
 
 test('the picked root files really do scope a plan to themselves', () => {
   const { dir } = tmpRepo({ 'README.md': lines(5), 'src/a.js': lines(5), 'lib/b.js': lines(5) })
-  const plan = JSON.parse(curc(dir, ['plan', '--json', '--scope', 'README.md']).out)
+  const plan = JSON.parse(runCli(dir, ['plan', '--json', '--scope', 'README.md']).out)
   assert.deepEqual(plan.chunks.flatMap(c => c.paths), ['README.md'])
   cleanup(dir)
 })

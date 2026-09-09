@@ -9,14 +9,14 @@ import { layout } from '../src/paths.js'
 import { readLedger } from '../src/ledger.js'
 import { settle } from './helpers/settle.js'
 
-const BIN = fileURLToPath(new URL('../bin/curc.js', import.meta.url))
+const BIN = fileURLToPath(new URL('../bin/claude-ultrareview-chunked.js', import.meta.url))
 const FAKE = fileURLToPath(new URL('./helpers/fake-claude.js', import.meta.url))
 
-function curc (dir, args, env = {}) {
+function runCli (dir, args, env = {}) {
   const r = spawnSync(process.execPath, [BIN, ...args], {
     cwd: dir,
     encoding: 'utf8',
-    env: { ...process.env, CURC_CLAUDE_BIN: FAKE, NO_COLOR: '1', ...env }
+    env: { ...process.env, CLAUDE_ULTRAREVIEW_CHUNKED_CLAUDE_BIN: FAKE, NO_COLOR: '1', ...env }
   })
   return { code: r.status, out: r.stdout ?? '', err: r.stderr ?? '' }
 }
@@ -31,7 +31,7 @@ function repo () {
 
 test('plan is free and reports what it dropped', () => {
   const { dir } = repo()
-  const r = curc(dir, ['plan', '--json', '--max-lines', '40'])
+  const r = runCli(dir, ['plan', '--json', '--max-lines', '40'])
   assert.equal(r.code, 0)
   const plan = JSON.parse(r.out)
   assert.equal(plan.totals.files, 3)
@@ -43,8 +43,8 @@ test('plan is free and reports what it dropped', () => {
 test('run without --yes refuses and bills nothing', () => {
   const { dir } = repo()
   const log = path.join(dir, 'argv.log')
-  curc(dir, ['plan', '--json'])
-  const r = curc(dir, ['run', '--chunks', 'all'], { FAKE_CLAUDE_ARGV_LOG: log })
+  runCli(dir, ['plan', '--json'])
+  const r = runCli(dir, ['run', '--chunks', 'all'], { FAKE_CLAUDE_ARGV_LOG: log })
   assert.equal(r.code, 5)
   assert.ok(/--yes/.test(r.err))
   assert.ok(!fs.existsSync(log), 'claude must not have been invoked')
@@ -54,12 +54,12 @@ test('run without --yes refuses and bills nothing', () => {
 test('dry-run builds and proves every pair, launches nothing, leaves no refs', () => {
   const { dir, git } = repo()
   const log = path.join(dir, 'argv.log')
-  curc(dir, ['plan', '--json'])
-  const r = curc(dir, ['run', '--chunks', 'all', '--dry-run'], { FAKE_CLAUDE_ARGV_LOG: log })
+  runCli(dir, ['plan', '--json'])
+  const r = runCli(dir, ['run', '--chunks', 'all', '--dry-run'], { FAKE_CLAUDE_ARGV_LOG: log })
   assert.equal(r.code, 0)
-  assert.match(r.out, /claude ultrareview curc\/base-\d+ --json --no-post/)
+  assert.match(r.out, /claude ultrareview claude-ultrareview-chunked\/base-\d+ --json --no-post/)
   assert.ok(!fs.existsSync(log), 'claude must not have been invoked')
-  assert.equal(git('for-each-ref', '--format=%(refname:short)', 'refs/heads/curc/').stdout.trim(), '')
+  assert.equal(git('for-each-ref', '--format=%(refname:short)', 'refs/heads/claude-ultrareview-chunked/').stdout.trim(), '')
   cleanup(dir)
 })
 
@@ -68,8 +68,8 @@ test('a full run reviews every chunk, records findings and tidies up after itsel
   const L = layout(dir)
   const log = path.join(dir, 'argv.log')
 
-  const plan = JSON.parse(curc(dir, ['plan', '--json', '--max-lines', '40']).out)
-  const r = curc(dir, ['run', '--chunks', 'all', '--yes', '--json'], { FAKE_CLAUDE_ARGV_LOG: log })
+  const plan = JSON.parse(runCli(dir, ['plan', '--json', '--max-lines', '40']).out)
+  const r = runCli(dir, ['run', '--chunks', 'all', '--yes', '--json'], { FAKE_CLAUDE_ARGV_LOG: log })
   assert.equal(r.code, 0)
 
   const ledger = await settle(L, plan.chunks.map(c => c.id))
@@ -80,14 +80,14 @@ test('a full run reviews every chunk, records findings and tidies up after itsel
   assert.equal(Object.keys(ledger.reviewed).length, 3)
   const invocations = fs.readFileSync(log, 'utf8').trim().split('\n').map(JSON.parse)
   assert.equal(invocations.length, plan.chunks.length)
-  for (const i of invocations) assert.match(i.cwd, /[/\\]\.claude[/\\]worktrees[/\\]curc-\d+$/)
+  for (const i of invocations) assert.match(i.cwd, /[/\\]\.claude[/\\]worktrees[/\\]claude-ultrareview-chunked-\d+$/)
 
-  const findings = JSON.parse(curc(dir, ['findings', '--json']).out)
+  const findings = JSON.parse(runCli(dir, ['findings', '--json']).out)
   assert.equal(findings.length, plan.chunks.length)
-  assert.ok(findings.every(f => f._curc.chunkId && f._curc.sessionUrl))
+  assert.ok(findings.every(f => f._chunkedReview.chunkId && f._chunkedReview.sessionUrl))
 
   // Auto-cleanup: no worktree and no ref survives a completed chunk.
-  assert.equal(git('for-each-ref', '--format=%(refname:short)', 'refs/heads/curc/').stdout.trim(), '')
+  assert.equal(git('for-each-ref', '--format=%(refname:short)', 'refs/heads/claude-ultrareview-chunked/').stdout.trim(), '')
   assert.equal(fs.readdirSync(path.join(dir, '.claude', 'worktrees')).length, 0)
   assert.equal(git('status', '--porcelain').stdout.includes('src/a.js'), false)
   cleanup(dir)
@@ -96,14 +96,14 @@ test('a full run reviews every chunk, records findings and tidies up after itsel
 test('a failing review is recorded as failed and does not count as coverage', async () => {
   const { dir } = repo()
   const L = layout(dir)
-  const plan = JSON.parse(curc(dir, ['plan', '--json']).out)
-  curc(dir, ['run', '--chunks', 'all', '--yes'], { FAKE_CLAUDE_MODE: 'fail' })
+  const plan = JSON.parse(runCli(dir, ['plan', '--json']).out)
+  runCli(dir, ['run', '--chunks', 'all', '--yes'], { FAKE_CLAUDE_MODE: 'fail' })
   await settle(L, plan.chunks.map(c => c.id))
 
   const ledger = readLedger(L)
   assert.equal(ledger.archive?.length ?? 0, 0)
   assert.equal(Object.keys(ledger.reviewed).length, 0, 'a failed review must not mark files reviewed')
-  const status = JSON.parse(curc(dir, ['status', '--json']).out)
+  const status = JSON.parse(runCli(dir, ['status', '--json']).out)
   assert.ok(status.pending.every(p => p.state === 'failed'))
   cleanup(dir)
 })
@@ -114,9 +114,9 @@ test('concurrency never exceeds three', async () => {
   ))
   const L = layout(dir)
   const log = path.join(dir, 'argv.log')
-  const plan = JSON.parse(curc(dir, ['plan', '--json', '--max-lines', '40']).out)
+  const plan = JSON.parse(runCli(dir, ['plan', '--json', '--max-lines', '40']).out)
   assert.ok(plan.chunks.length >= 6)
-  curc(dir, ['run', '--chunks', 'all', '--yes'], { FAKE_CLAUDE_ARGV_LOG: log, FAKE_CLAUDE_DELAY_MS: '300' })
+  runCli(dir, ['run', '--chunks', 'all', '--yes'], { FAKE_CLAUDE_ARGV_LOG: log, FAKE_CLAUDE_DELAY_MS: '300' })
   await settle(L, plan.chunks.map(c => c.id), 60000)
 
   const starts = fs.readFileSync(log, 'utf8').trim().split('\n').map(l => JSON.parse(l).at).sort((a, b) => a - b)
@@ -130,31 +130,31 @@ test('concurrency never exceeds three', async () => {
 
 /**
  * Chunk ids are monotonic across re-plans and stop matching list positions the
- * moment one happens. Every table curc prints is headed by the id, so the id is
+ * moment one happens. Every table claude-ultrareview-chunked prints is headed by the id, so the id is
  * what --chunks has to mean — selecting by position billed a review of a chunk
  * the user could not even name.
  */
 test('--chunks names chunk ids, not positions in the list', async () => {
   const { dir, git } = tmpRepo({ 'a/1.js': lines(20, 'a'), 'b/1.js': lines(20, 'b') })
   const L = layout(dir)
-  const first = JSON.parse(curc(dir, ['plan', '--json', '--max-lines', '25']).out)
+  const first = JSON.parse(runCli(dir, ['plan', '--json', '--max-lines', '25']).out)
   assert.deepEqual(first.chunks.map(c => c.id), [1, 2])
-  assert.equal(curc(dir, ['run', '--chunks', 'all', '--yes']).code, 0)
+  assert.equal(runCli(dir, ['run', '--chunks', 'all', '--yes']).code, 0)
   await settle(L, first.chunks.map(c => c.id))
 
   write(dir, { 'c/1.js': lines(20, 'c'), 'd/1.js': lines(20, 'd') })
   git('add', '-A'); git('commit', '-qm', 'more')
-  const next = JSON.parse(curc(dir, ['plan', '--json', '--max-lines', '25']).out)
+  const next = JSON.parse(runCli(dir, ['plan', '--json', '--max-lines', '25']).out)
   assert.deepEqual(next.chunks.map(c => c.id), [3, 4], 'ids are never reused')
 
   // The id on screen selects that chunk…
-  const byId = curc(dir, ['run', '--chunks', '3', '--dry-run'])
+  const byId = runCli(dir, ['run', '--chunks', '3', '--dry-run'])
   assert.equal(byId.code, 0)
   assert.match(byId.out, /^chunk 3:/m)
 
   // …and an id that is not in the plan is refused, not quietly swapped.
   const log = path.join(dir, 'argv.log')
-  const stale = curc(dir, ['run', '--chunks', '1', '--yes'], { FAKE_CLAUDE_ARGV_LOG: log })
+  const stale = runCli(dir, ['run', '--chunks', '1', '--yes'], { FAKE_CLAUDE_ARGV_LOG: log })
   assert.equal(stale.code, 2)
   assert.match(stale.err, /no planned chunk with id 1/)
   assert.match(stale.err, /planned: 3, 4/)
@@ -165,17 +165,17 @@ test('--chunks names chunk ids, not positions in the list', async () => {
 test('findings --chunks speaks the same ids, and understands "all"', async () => {
   const { dir } = repo()
   const L = layout(dir)
-  const plan = JSON.parse(curc(dir, ['plan', '--json', '--max-lines', '40']).out)
-  assert.equal(curc(dir, ['run', '--chunks', 'all', '--yes']).code, 0)
+  const plan = JSON.parse(runCli(dir, ['plan', '--json', '--max-lines', '40']).out)
+  assert.equal(runCli(dir, ['run', '--chunks', 'all', '--yes']).code, 0)
   await settle(L, plan.chunks.map(c => c.id))
 
-  const all = JSON.parse(curc(dir, ['findings', '--json', '--chunks', 'all']).out)
+  const all = JSON.parse(runCli(dir, ['findings', '--json', '--chunks', 'all']).out)
   assert.equal(all.length, plan.chunks.length, '"all" used to parse as NaN and match nothing')
 
-  const one = JSON.parse(curc(dir, ['findings', '--json', '--chunks', String(plan.chunks[0].id)]).out)
-  assert.deepEqual(one.map(f => f._curc.chunkId), [plan.chunks[0].id])
+  const one = JSON.parse(runCli(dir, ['findings', '--json', '--chunks', String(plan.chunks[0].id)]).out)
+  assert.deepEqual(one.map(f => f._chunkedReview.chunkId), [plan.chunks[0].id])
 
-  const bad = curc(dir, ['findings', '--json', '--chunks', '999'])
+  const bad = runCli(dir, ['findings', '--json', '--chunks', '999'])
   assert.equal(bad.code, 2)
   assert.match(bad.err, /no reviewed chunk with id 999/)
   cleanup(dir)
