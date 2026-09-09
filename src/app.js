@@ -1,0 +1,263 @@
+import fs from 'node:fs'
+import path from 'node:path'
+import { repoRoot, shortSha } from './git.js'
+import { layout, ensureDirs, pad } from './paths.js'
+import { readLedger, writeLedger, runState } from './ledger.js'
+import { survey, planFrom, drift } from './plan.js'
+import { preflight, lockHolder } from './preflight.js'
+import { statusRows, doneRows, collectFindings } from './report.js'
+import { launch, stopAll } from './supervisor.js'
+import { dropPair, listRefs } from './branches.js'
+import { removeWorktree } from './worktree.js'
+import { menu, confirm, toggleList, parseSpec, ask, closePrompt, isTTY } from './prompt.js'
+import { c, say, out, num, table, paintStatus, costBand } from './ui.js'
+
+const MAX_PER_LAUNCH = 3
+
+/**
+ * The one entry point. Everything a person needs to do — see the plan, pick
+ * chunks, spend, watch, read findings, tidy up — happens inside this loop, in
+ * whatever order they want. No command has to be run before another.
+ */
+export async function guided (cwd) {
+  if (!isTTY()) {
+    say(c.red('curc needs a terminal for its guided mode.'))
+    say('Use the subcommands instead — `curc --help`.')
+    return 5
+  }
+
+  say('')
+  say(c.bold('curc') + c.dim(' — chunked ultrareview'))
+
+  // Claude Code has to be there before anything else is worth doing.
+  const pre = preflight(cwd)
+  renderPreflight(pre)
+  if (!pre.ok) return pre.exitCode
+
+  const root = repoRoot(cwd)
+  const L = layout(root)
+  ensureDirs(L)
+  await offerGitignore(L)
+
+  let ledger = readLedger(L)
+  if (!ledger || !ledger.chunks?.length) ledger = await replan(L, ledger)
+  if (!ledger) return 1
+
+  for (;;) {
+    const d = drift(ledger, root)
+    board(L, ledger, d)
+
+    const choice = await menu('What now?', [
+      { key: 'review', label: 'Review chunks', hint: `up to ${MAX_PER_LAUNCH} at a time — this spends money` },
+      { key: 'watch', label: 'Check on running reviews' },
+      { key: 'findings', label: 'Read findings' },
+      { key: 'replan', label: 'Change scope / re-plan' },
+      { key: 'clean', label: 'Clean up worktrees and branches' },
+      { key: 'quit', label: 'Quit' }
+    ])
+
+    if (choice === 'quit') break
+    if (choice === 'review') ledger = await doReview(L, ledger) ?? ledger
+    else if (choice === 'watch') doWatch(L, ledger)
+    else if (choice === 'findings') doFindings(L, ledger)
+    else if (choice === 'replan') ledger = await replan(L, ledger) ?? ledger
+    else if (choice === 'clean') await doClean(L, ledger)
+  }
+
+  closePrompt()
+  say('')
+  return 0
+}
+
+/* ---- the board ---------------------------------------------------------- */
+
+function board (L, ledger, d) {
+  const rows = statusRows(L, ledger)
+  const done = doneRows(L, ledger)
+  const sup = lockHolder(L)
+
+  say('')
+  say(c.bold(`  ${path.basename(L.root)}`) + c.dim(`  @ ${shortSha(ledger.snapshot)}`))
+  say(c.dim(`  scope     `) + (ledger.scope.include.length ? ledger.scope.include.join(', ') : 'whole repo'))
+  say(c.dim(`  reviewed  `) + `${num(done.length)} chunk(s), ${num(Object.keys(ledger.reviewed).length)} files`)
+  say(c.dim(`  pending   `) + `${num(rows.length)} chunk(s)` + (rows.length ? c.dim(`   est. ${costBand(rows.length)} to finish`) : ''))
+  if (sup?.alive) say(c.cyan(`  running   supervisor pid ${sup.pid}`))
+  if (d.state === 'drifted') {
+    say(c.yellow(`  drift     HEAD is ${shortSha(d.head)}, plan was made at ${shortSha(d.snapshot)} — re-plan to pick up the changes`))
+  }
+  say('')
+
+  if (!rows.length) { say(c.dim('  nothing pending — everything in scope has been reviewed')); return }
+  const shown = rows.slice(0, 25)
+  out(table(
+    ['  #', 'files', 'lines', 'area', 'status'],
+    shown.map(r => [`  ${r.label}`, num(r.files), num(r.lines), r.area, paintStatus(r.state)]),
+    { align: [null, 'r', 'r'] }
+  ))
+  if (rows.length > shown.length) {
+    say(c.dim(`  … and ${rows.length - shown.length} more — any id is selectable, or \`curc status\` lists them all`))
+  }
+}
+
+function renderPreflight (pre) {
+  say('')
+  for (const ck of pre.checks) {
+    const mark = ck.ok ? c.green('✓') : c.red('✗')
+    say(`  ${mark} ${ck.name}${ck.detail ? c.dim('  ' + ck.detail) : ''}`)
+    if (!ck.ok && ck.remedy) say(`      ${c.yellow('→')} ${ck.remedy}`)
+  }
+}
+
+/* ---- planning ----------------------------------------------------------- */
+
+async function replan (L, ledger) {
+  if (lockHolder(L)?.alive) {
+    say(c.yellow('\n  A run is in flight. Stop it before re-planning.'))
+    return ledger
+  }
+
+  say(c.dim('\n  surveying…'))
+  let include = ledger?.scope?.include ?? []
+  let exclude = ledger?.scope?.exclude ?? []
+  let s = await survey(L.root, { include, exclude, reviewed: ledger?.reviewed ?? {} })
+
+  if (s.dirs.length > 1) {
+    const picked = await toggleList(
+      `Scope — ${num(s.files.length)} files, ${num(s.files.reduce((n, f) => n + f.lines, 0))} lines`,
+      s.dirs,
+      {
+        render: dd => `${dd.name.padEnd(24)} ${String(num(dd.files)).padStart(5)} files  ${String(num(dd.lines)).padStart(8)} lines`,
+        selected: new Set(s.dirs.map((_, i) => i).filter(i => !include.length || include.includes(s.dirs[i].name)))
+      }
+    )
+    if (!picked.length) { say(c.yellow('  nothing selected')); return ledger }
+    include = picked.map(p => p.name).filter(n => n !== '.')
+    s = await survey(L.root, { include, exclude, reviewed: ledger?.reviewed ?? {} })
+  }
+
+  const dropped = s.dropped
+  const dropCount = dropped.excluded.length + dropped.binary.length + dropped.oversize.length
+  if (dropCount) {
+    say(c.dim(`  skipped ${dropCount}: ${dropped.excluded.length} excluded, ${dropped.binary.length} binary, ${dropped.oversize.length} over the ${num(s.caps.maxLines)}-line cap`))
+    for (const o of dropped.oversize.slice(0, 5)) say(c.dim(`    ${o.path} (${num(o.lines)} lines — no diff can hold it)`))
+  }
+
+  // Pending chunks from the old plan are about to be renumbered; their refs go.
+  for (const ch of ledger?.chunks ?? []) { dropPair(L, ch.id); removeWorktree(L, ch.id) }
+
+  const next = planFrom(ledger, s, { include, exclude })
+  writeLedger(L, next)
+  say(c.green(`  planned ${next.chunks.length} chunk(s)`) +
+    c.dim(` from ${num(s.coverage.files - s.coverage.covered)} unreviewed files` +
+      (s.coverage.covered ? `; ${num(s.coverage.covered)} already covered` : '')))
+  return next
+}
+
+/* ---- reviewing ---------------------------------------------------------- */
+
+async function doReview (L, ledger) {
+  const rows = statusRows(L, ledger).filter(r => !['running', 'queued'].includes(r.state))
+  if (!rows.length) { say(c.yellow('\n  nothing available to review')); return ledger }
+
+  const sup = lockHolder(L)
+  if (sup?.alive) {
+    say(c.yellow(`\n  A run is already in flight (pid ${sup.pid}). Wait for it, or stop it first.`))
+    return ledger
+  }
+
+  const pre = preflight(L.root, { ledger, forRun: true })
+  if (!pre.ok) { renderPreflight(pre); return ledger }
+
+  say('')
+  say(c.dim(`  Pick up to ${MAX_PER_LAUNCH} chunks. Each one is a separate cloud review.`))
+  const spec = await ask(`  chunks (e.g. "1", "1-3", "1,4")`)
+  const picked = parseSpec(spec.toLowerCase(), rows.length).slice(0, MAX_PER_LAUNCH).map(i => rows[i])
+  if (!picked.length) { say(c.yellow('  nothing selected')); return ledger }
+
+  say('')
+  out(table(
+    ['  #', 'files', 'lines', 'area'],
+    picked.map(r => [`  ${r.label}`, num(r.files), num(r.lines), r.area]),
+    { align: [null, 'r', 'r'] }
+  ))
+  say('')
+  say(`  ${picked.length} review(s) — estimated ${c.bold(costBand(picked.length))} in usage credits.`)
+  say(c.dim('  The first 3 ultrareviews are free on Pro and Max; curc cannot see how many you have left.'))
+  say(c.dim('  A run that starts and then fails still consumes one.'))
+
+  if (!await confirm(`\n  ${c.bold('Start')} ${picked.length} review(s) and spend up to ${costBand(picked.length).split('–')[1]}?`)) {
+    say(c.dim('  nothing started'))
+    return ledger
+  }
+
+  const { runId, pid } = launch(L, {
+    chunkIds: picked.map(r => r.id),
+    concurrency: Math.min(MAX_PER_LAUNCH, picked.length),
+    timeout: 45
+  })
+  say(c.green(`\n  started ${runId}`) + c.dim(` (supervisor pid ${pid})`))
+  say(c.dim('  Reviews take 5–10 minutes each and keep running if you quit.'))
+  return readLedger(L) ?? ledger
+}
+
+/* ---- watching, findings, cleanup ---------------------------------------- */
+
+function doWatch (L, ledger) {
+  const rows = statusRows(L, readLedger(L) ?? ledger)
+  const active = rows.filter(r => ['running', 'queued', 'orphaned'].includes(r.state))
+  const sup = lockHolder(L)
+  say('')
+  if (!sup?.alive && !active.length) { say(c.dim('  no run in flight')); return }
+  if (sup?.alive) say(c.cyan(`  supervisor pid ${sup.pid}, heartbeat ${sup.heartbeatAgeSec}s ago`))
+  for (const r of active) {
+    const started = r.run?.startedAt ? `started ${new Date(r.run.startedAt).toLocaleTimeString()}` : 'queued'
+    say(`  ${r.label}  ${paintStatus(r.state)}  ${c.dim(started)}${r.run?.sessionUrl ? '\n        ' + c.dim(r.run.sessionUrl) : ''}`)
+  }
+  say(c.dim(`\n  logs: ${path.relative(L.root, L.logs)}/`))
+}
+
+function doFindings (L, ledger) {
+  const fresh = readLedger(L) ?? ledger
+  const done = doneRows(L, fresh)
+  say('')
+  if (!done.length) { say(c.dim('  no completed reviews yet')); return }
+  out(table(
+    ['  #', 'files', 'findings', 'area'],
+    done.map(r => [`  ${r.label}`, num(r.files), r.findings ?? '?', r.area]),
+    { align: [null, 'r', 'r'] }
+  ))
+  const all = collectFindings(L, fresh)
+  say('')
+  say(`  ${num(all.length)} finding(s) across ${done.length} chunk(s).`)
+  say(c.dim(`  Full payloads: ${path.relative(L.root, L.findings)}/`))
+  say(c.dim('  `curc findings --json` prints them all with chunk provenance.'))
+}
+
+async function doClean (L, ledger) {
+  if (lockHolder(L)?.alive) { say(c.yellow('\n  A run is in flight — stop it first.')); return }
+  const refs = listRefs(L)
+  const wts = fs.existsSync(L.worktrees)
+    ? fs.readdirSync(L.worktrees).filter(n => n.startsWith('curc-'))
+    : []
+  say('')
+  if (!refs.length && !wts.length) { say(c.dim('  nothing to clean')); return }
+  say(`  ${refs.length} branch(es) under curc/, ${wts.length} worktree(s).`)
+  say(c.dim('  Findings and the ledger are kept.'))
+  if (!await confirm('  Remove them?')) return
+  for (const ch of [...(ledger.chunks ?? []), ...(ledger.archive ?? [])]) { removeWorktree(L, ch.id); dropPair(L, ch.id) }
+  say(c.green('  cleaned'))
+}
+
+async function offerGitignore (L) {
+  const gi = path.join(L.root, '.gitignore')
+  const line = '.claude/curc/'
+  let text = ''
+  try { text = fs.readFileSync(gi, 'utf8') } catch {}
+  if (text.split('\n').some(l => l.trim() === line)) return
+  say('')
+  if (!await confirm(`  Add ${c.bold(line)} to .gitignore? ${c.dim('(curc writes its ledger and findings there)')}`, { default: true })) return
+  fs.appendFileSync(gi, (text && !text.endsWith('\n') ? '\n' : '') + `\n# curc — chunked ultrareview state\n${line}\n`)
+  say(c.green('  added'))
+}
+
+export { stopAll, pad }

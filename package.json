@@ -1,0 +1,17 @@
+{
+  "name": "curc",
+  "version": "0.1.0",
+  "description": "Chunked ultrareview: slice a whole codebase into diff-sized pieces and run a Claude Code ultrareview over each one.",
+  "keywords": ["claude", "claude-code", "ultrareview", "code-review", "git", "cli"],
+  "homepage": "https://github.com/artdiev/curc",
+  "repository": { "type": "git", "url": "git+https://github.com/artdiev/curc.git" },
+  "license": "MIT",
+  "author": { "name": "artdiev" },
+  "type": "module",
+  "bin": { "curc": "./bin/curc.js" },
+  "files": ["bin", "src", "skills", ".claude-plugin", "README.md", "LICENSE"],
+  "engines": { "node": ">=20" },
+  "scripts": {
+    "test": "node --test --test-timeout 180000 test/*.test.js"
+  }
+}

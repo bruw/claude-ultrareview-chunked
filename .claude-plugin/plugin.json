@@ -1,0 +1,10 @@
+{
+  "name": "curc",
+  "version": "0.1.0",
+  "description": "Chunked whole-codebase sweeps with Claude Code's ultrareview: slices a repository into diff-sized chunks, drives one cloud review per chunk, and triages the findings.",
+  "author": { "name": "artdiev" },
+  "homepage": "https://github.com/artdiev/curc",
+  "repository": "https://github.com/artdiev/curc",
+  "license": "MIT",
+  "keywords": ["code-review", "ultrareview", "audit", "cli"]
+}
