@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { globToRegExp, matchesAny, collectFiles } from '../src/scope.js'
+import { globToRegExp, collectFiles } from '../src/scope.js'
 import { measureBlobs } from '../src/git.js'
 import { tmpRepo, lines, cleanup } from './helpers/tmprepo.js'
 

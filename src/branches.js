@@ -6,9 +6,12 @@ import { REF_PREFIX, pad } from './paths.js'
 /** Fixed identity and dates, so the same plan always produces the same SHAs. */
 function commitEnv (snapshotDate) {
   return {
-    GIT_AUTHOR_NAME: 'curc', GIT_AUTHOR_EMAIL: 'curc@localhost',
-    GIT_COMMITTER_NAME: 'curc', GIT_COMMITTER_EMAIL: 'curc@localhost',
-    GIT_AUTHOR_DATE: snapshotDate, GIT_COMMITTER_DATE: snapshotDate
+    GIT_AUTHOR_NAME: 'curc',
+    GIT_AUTHOR_EMAIL: 'curc@localhost',
+    GIT_COMMITTER_NAME: 'curc',
+    GIT_COMMITTER_EMAIL: 'curc@localhost',
+    GIT_AUTHOR_DATE: snapshotDate,
+    GIT_COMMITTER_DATE: snapshotDate
   }
 }
 
@@ -34,12 +37,13 @@ export function buildPair (L, { id, snapshot, snapshotTree, files }) {
   const date = git(['show', '-s', '--format=%cI', snapshot], { cwd })
   const env = { GIT_INDEX_FILE: idxFile }
 
+  let baseTree
   try {
     git(['read-tree', snapshotTree], { cwd, env })
     git(['update-index', '--force-remove', '-z', '--stdin'], {
       cwd, env, input: files.map(f => f.path).join('\0') + '\0'
     })
-    var baseTree = git(['write-tree'], { cwd, env })
+    baseTree = git(['write-tree'], { cwd, env })
   } finally {
     fs.rmSync(idxFile, { force: true })
   }

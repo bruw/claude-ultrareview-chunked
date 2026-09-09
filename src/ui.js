@@ -28,17 +28,25 @@ export function table (headers, rows, { align = [] } = {}) {
 }
 
 // styleText wraps cells in escapes; column width has to ignore them.
-const visible = s => s.replace(/\x1b\[[0-9;]*m/g, '')
+const visible = s => s.replace(/\x1b\[[0-9;]*m/g, '') // eslint-disable-line no-control-regex
 function pad (s, n, right = false) {
   const gap = ' '.repeat(Math.max(0, n - visible(s).length))
   return right ? gap + s : s + gap
 }
 
 export const STATUS_STYLE = {
-  covered: s => c.dim(s), done: s => c.green(s), running: s => c.cyan(s),
-  queued: s => c.cyan(s), pending: s => s, new: s => s, partial: s => c.yellow(s),
-  failed: s => c.red(s), timeout: s => c.red(s), crashed: s => c.red(s),
-  orphaned: s => c.red(s), interrupted: s => c.yellow(s)
+  covered: s => c.dim(s),
+  done: s => c.green(s),
+  running: s => c.cyan(s),
+  queued: s => c.cyan(s),
+  pending: s => s,
+  new: s => s,
+  partial: s => c.yellow(s),
+  failed: s => c.red(s),
+  timeout: s => c.red(s),
+  crashed: s => c.red(s),
+  orphaned: s => c.red(s),
+  interrupted: s => c.yellow(s)
 }
 
 export function paintStatus (s) {
@@ -73,7 +81,7 @@ export function costBand (n) {
  * sequence in a title is not text but a command — so strip the control range
  * from anything that came out of a review. `--json` is data and stays raw.
  */
-const CONTROL = /[\x00-\x08\x0b-\x1f\x7f-\x9f]/g
+const CONTROL = /[\x00-\x08\x0b-\x1f\x7f-\x9f]/g // eslint-disable-line no-control-regex
 
 export function sanitize (s) {
   return String(s ?? '').replace(CONTROL, '')

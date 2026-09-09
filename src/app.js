@@ -89,9 +89,9 @@ function board (L, ledger, d) {
 
   say('')
   say(c.bold(`  ${path.basename(L.root)}`) + c.dim(`  @ ${shortSha(ledger.snapshot)}`))
-  say(c.dim(`  scope     `) + (ledger.scope.include.length ? ledger.scope.include.join(', ') : 'whole repo'))
-  say(c.dim(`  reviewed  `) + `${num(done.length)} chunk(s), ${num(Object.keys(ledger.reviewed).length)} files`)
-  say(c.dim(`  pending   `) + `${num(rows.length)} chunk(s)` + (rows.length ? c.dim(`   est. ${costBand(rows.length)} to finish`) : ''))
+  say(c.dim('  scope     ') + (ledger.scope.include.length ? ledger.scope.include.join(', ') : 'whole repo'))
+  say(c.dim('  reviewed  ') + `${num(done.length)} chunk(s), ${num(Object.keys(ledger.reviewed).length)} files`)
+  say(c.dim('  pending   ') + `${num(rows.length)} chunk(s)` + (rows.length ? c.dim(`   est. ${costBand(rows.length)} to finish`) : ''))
   if (sup?.alive) say(c.cyan(`  running   supervisor pid ${sup.pid}`))
   if (d.state === 'drifted') {
     say(c.yellow(`  drift     HEAD is ${shortSha(d.head)}, plan was made at ${shortSha(d.snapshot)} — re-plan to pick up the changes`))
@@ -129,7 +129,7 @@ async function replan (L, ledger) {
 
   say(c.dim('\n  surveying…'))
   let include = ledger?.scope?.include ?? []
-  let exclude = ledger?.scope?.exclude ?? []
+  const exclude = ledger?.scope?.exclude ?? []
   let s = await survey(L.root, { include, exclude, reviewed: ledger?.reviewed ?? {} })
 
   if (s.dirs.length > 1) {
@@ -345,4 +345,3 @@ async function offerGitignore (L) {
     `\n# curc — chunked ultrareview state\n${missing.join('\n')}\n`)
   say(c.green(`  added ${missing.length} line(s)`))
 }
-

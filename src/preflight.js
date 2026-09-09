@@ -1,7 +1,7 @@
 import { isRepo, tryGit } from './git.js'
 import * as claude from './claude.js'
 import { listRefs } from './branches.js'
-import { REF_PREFIX } from './paths.js'
+import { REF_PREFIX, pad } from './paths.js'
 
 /**
  * Everything that must hold before curc spends anything. Each result carries
@@ -46,7 +46,7 @@ export function preflight (root, { ledger = null, forRun = false, claudeChecks =
   // `status` and `clean` are exactly the commands run after an interrupted
   // sweep, and they used to skip the stray-ref check entirely.
   const known = new Set()
-  for (const c of ledger?.chunks ?? []) { known.add(`${REF_PREFIX}/base-${p(c.id)}`); known.add(`${REF_PREFIX}/chunk-${p(c.id)}`) }
+  for (const c of ledger?.chunks ?? []) { known.add(`${REF_PREFIX}/base-${pad(c.id)}`); known.add(`${REF_PREFIX}/chunk-${pad(c.id)}`) }
   const strays = listRefs({ root }).filter(r => !known.has(r))
   if (strays.length) {
     add(`${REF_PREFIX}/ refs`, false, `${strays.length} ref(s) under ${REF_PREFIX}/ that this ledger does not own`,
@@ -100,8 +100,6 @@ function finish (checks) {
   const fatalFail = checks.find(c => !c.ok && c.fatal)
   return { checks, ok: !fatalFail, exitCode: fatalFail ? 4 : 0 }
 }
-
-const p = id => String(id).padStart(4, '0')
 
 /**
  * Who holds the run lock. One implementation, in `lock.js`.

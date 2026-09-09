@@ -255,13 +255,17 @@ async function cmdRun (L, v) {
   }
 
   if (v['dry-run']) {
+    const proved = []
     for (const id of ids) {
       const ch = ledger.chunks.find(x => x.id === id)
       buildPair(L, { id, snapshot: ledger.snapshot, snapshotTree: ledger.snapshotTree, files: ch.files })
       const size = pairSize(L, id)
-      out(`chunk ${id}: ${size.files} files / ${size.lines} lines — claude ${reviewArgv(L.baseRef(id)).join(' ')}`)
+      const argv = reviewArgv(L.baseRef(id))
+      proved.push({ id, files: size.files, lines: size.lines, argv })
+      if (!v.json) out(`chunk ${id}: ${size.files} files / ${size.lines} lines — claude ${argv.join(' ')}`)
       dropPair(L, id)
     }
+    if (v.json) out(JSON.stringify({ dryRun: true, chunks: proved, costEstimateUsd: costRange(ids.length) }, null, 2))
     say(c.dim('\ndry run — nothing launched, nothing billed'))
     return 0
   }

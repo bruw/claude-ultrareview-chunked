@@ -74,7 +74,8 @@ export function collectFindings (L, ledger, ids = null) {
       out.push({ _curc: { chunkId: a.id, parseError: true, findingsPath: path.relative(L.root, p) } })
       continue
     }
-    const list = Array.isArray(parsed) ? parsed
+    const list = Array.isArray(parsed)
+      ? parsed
       : parsed?.findings ?? parsed?.bugs ?? parsed?.results ?? []
     const run = readRun(L, a.id)
     for (const f of list) {

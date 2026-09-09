@@ -48,12 +48,3 @@ export function removeWorktreeDir (L, name) {
   if (fs.existsSync(dir)) fs.rmSync(dir, { recursive: true, force: true })
   tryGit(['worktree', 'prune'], { cwd: L.root })
 }
-
-export function listWorktrees (L) {
-  const r = tryGit(['worktree', 'list', '--porcelain'], { cwd: L.root })
-  if (r.code !== 0) return []
-  return r.stdout.split('\n')
-    .filter(l => l.startsWith('worktree '))
-    .map(l => l.slice('worktree '.length))
-    .filter(p => p.includes(`${REF_PREFIX}-`) || p.includes(`/worktrees/curc-`))
-}

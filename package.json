@@ -35,6 +35,11 @@
     "node": ">=20"
   },
   "scripts": {
-    "test": "node --test --test-timeout 180000 test/*.test.js"
+    "test": "node --test --test-timeout 180000 test/*.test.js",
+    "lint": "standard src bin test",
+    "lint:fix": "standard --fix src bin test"
+  },
+  "devDependencies": {
+    "standard": "^17.1.2"
   }
 }

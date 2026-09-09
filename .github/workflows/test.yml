@@ -6,6 +6,16 @@ on:
   pull_request:
 
 jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: npm ci
+      - run: npm run lint
+
   test:
     runs-on: ubuntu-latest
     strategy:
@@ -24,5 +34,6 @@ jobs:
           git config --global user.email ci@example.com
           git config --global user.name ci
           git config --global init.defaultBranch main
-      # No dependencies to install: curc has none, and the suite is node:test.
+      # curc has no runtime dependencies and the suite is node:test, so there
+      # is nothing to install for the tests themselves.
       - run: npm test

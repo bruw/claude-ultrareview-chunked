@@ -76,7 +76,20 @@ test('a chunk already claimed is skipped rather than reviewed again', async () =
   fs.mkdirSync(L.runs, { recursive: true })
   fs.writeFileSync(path.join(L.runs, `${String(first).padStart(4, '0')}.claim`), '')
 
-  assert.equal(curc(dir, ['run', '--chunks', 'all', '--yes'], { FAKE_CLAUDE_ARGV_LOG: log }).code, 0)
+  // The parent sees the claim and refuses the whole spend without --force.
+  const refused = curc(dir, ['run', '--chunks', 'all', '--yes'], { FAKE_CLAUDE_ARGV_LOG: log })
+  assert.equal(refused.code, 6)
+  assert.match(refused.err, /may already have been billed/)
+  assert.equal(fs.existsSync(log), false, 'nothing was launched')
+
+  // The supervisor's own guard is the last line, and holds even when the
+  // parent's check is bypassed — here by calling launch() directly, which is
+  // what a claim appearing between the parent's check and the spawn looks like.
+  Object.assign(process.env, ENV, { FAKE_CLAUDE_ARGV_LOG: log })
+  try {
+    const { launch } = await import('../src/supervisor.js')
+    assert.equal(launch(L, { chunkIds: [first, second], concurrency: 2, timeout: 1 }).ok, true)
+  } finally { for (const k of [...Object.keys(ENV), 'FAKE_CLAUDE_ARGV_LOG']) delete process.env[k] }
   const { settle } = await import('./helpers/settle.js')
   await settle(L, [first, second])
 
@@ -246,7 +259,7 @@ test('a review that never returns is killed and recorded as a timeout', async ()
   const id = plan.chunks[0].id
 
   assert.equal(curc(dir, ['run', '--chunks', 'all', '--yes'], {
-    FAKE_CLAUDE_DELAY_MS: '600000',   // a review that will never come back
+    FAKE_CLAUDE_DELAY_MS: '600000', // a review that will never come back
     CURC_WATCHDOG_MS: '700'
   }).code, 0)
 
@@ -273,8 +286,8 @@ test('a stopped review reads as interrupted rather than failed', async () => {
   assert.equal(curc(dir, ['run', '--chunks', 'all', '--yes'], { FAKE_CLAUDE_DELAY_MS: '10000' }).code, 0)
   // Wait for the review to actually be in flight before stopping it.
   const until = Date.now() + 10000
-  while (Date.now() < until && !lockState(L)?.pid) await new Promise(r => setTimeout(r, 50))
-  await new Promise(r => setTimeout(r, 400))
+  while (Date.now() < until && !lockState(L)?.pid) await new Promise(resolve => setTimeout(resolve, 50))
+  await new Promise(resolve => setTimeout(resolve, 400))
 
   assert.equal(curc(dir, ['stop']).code, 0)
   const { settle } = await import('./helpers/settle.js')

@@ -16,7 +16,6 @@ const curc = (dir, args, env = {}) => spawnSync(process.execPath, [BIN, ...args]
   cwd: dir, encoding: 'utf8', env: { ...process.env, CURC_CLAUDE_BIN: FAKE, NO_COLOR: '1', ...env }
 })
 
-
 /** Plan, review everything, and hand back the ledger with coverage recorded. */
 async function sweep (dir) {
   const L = layout(dir)
@@ -42,7 +41,7 @@ test('a file that moved but did not change stays covered', async () => {
 
 test('an edited file comes back into the plan; its untouched neighbours do not', async () => {
   const { dir, git } = tmpRepo({ 'src/a.js': lines(20, 'a'), 'src/b.js': lines(20, 'b'), 'src/c.js': lines(20, 'c') })
-  const L = await sweep(dir)
+  await sweep(dir)
 
   fs.writeFileSync(path.join(dir, 'src/b.js'), lines(20, 'b') + 'new logic\n')
   git('add', '-A'); git('commit', '-qm', 'edit b')

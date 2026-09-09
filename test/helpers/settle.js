@@ -18,7 +18,7 @@ export async function settle (L, ids, ms = 30000) {
   const until = Date.now() + ms
   while (Date.now() < until) {
     if (!lockState(L) && ids.every(id => TERMINAL.has(runState(readRun(L, id))))) return readLedger(L)
-    await new Promise(r => setTimeout(r, 50))
+    await new Promise(resolve => setTimeout(resolve, 50))
   }
   const states = ids.map(id => `${id}:${runState(readRun(L, id))}`).join(' ')
   throw new Error(

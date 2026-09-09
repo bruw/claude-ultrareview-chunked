@@ -6,7 +6,7 @@ import { fileURLToPath } from 'node:url'
 import { spawnSync } from 'node:child_process'
 import { tmpRepo, write, lines, cleanup } from './helpers/tmprepo.js'
 import { layout } from '../src/paths.js'
-import { readLedger, readRun, runState } from '../src/ledger.js'
+import { readLedger } from '../src/ledger.js'
 import { settle } from './helpers/settle.js'
 
 const BIN = fileURLToPath(new URL('../bin/curc.js', import.meta.url))
@@ -28,7 +28,6 @@ function repo () {
     'lib/c.js': lines(30, 'c')
   })
 }
-
 
 test('plan is free and reports what it dropped', () => {
   const { dir } = repo()

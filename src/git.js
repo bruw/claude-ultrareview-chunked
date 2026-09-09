@@ -271,7 +271,7 @@ function runCatFile (cwd, args, want, makeParser) {
     child.stderr.setEncoding('utf8')
     child.stderr.on('data', d => { if (errText.length < 8192) errText += d })
     child.stderr.on('error', () => {})
-    child.stdin.on('error', () => {})   // git exiting early must not crash us
+    child.stdin.on('error', () => {}) // git exiting early must not crash us
     child.on('error', fail)
 
     if (args[0] === '--batch-check') child.stdout.setEncoding('utf8')

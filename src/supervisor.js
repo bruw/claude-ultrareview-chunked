@@ -143,7 +143,8 @@ export async function supervise (root, runId) {
         if (live.size === 0) resolve()
         return
       }
-      while (!stopping && live.size < queue.concurrency && pending.length) {
+      // `stopping` is flipped by the signal handlers and the heartbeat above.
+      while (!stopping && live.size < queue.concurrency && pending.length) { // eslint-disable-line no-unmodified-loop-condition
         const id = pending.shift()
         // Teardown can throw; a rejection here would take the whole sweep down.
         const p = runChunk(L, id, queue)
@@ -182,7 +183,9 @@ async function runChunk (L, id, queue) {
     if (size.files > HARD_MAX_FILES || size.lines > HARD_MAX_LINES) {
       dropPair(L, id)
       return patchRun(L, id, {
-        finishedAt: now(), exitCode: 1, reason: 'cap-exceeded',
+        finishedAt: now(),
+        exitCode: 1,
+        reason: 'cap-exceeded',
         detail: `${size.files} files / ${size.lines} lines exceeds ${HARD_MAX_FILES}/${HARD_MAX_LINES}`
       })
     }
