@@ -35,6 +35,16 @@ export function lines (n, tag = 'x') {
   return Array.from({ length: n }, (_, i) => `${tag} line ${i}`).join('\n') + '\n'
 }
 
+/**
+ * Remove a fixture repo.
+ *
+ * A detached supervisor may still be writing into it — the sweep is over, but
+ * its last teardown can lag the run records slightly — so a removal that races
+ * one is retried rather than allowed to fail the test that asked for it. This
+ * is far likelier on a shared CI runner than on a developer's machine.
+ */
 export function cleanup (dir) {
-  fs.rmSync(dir, { recursive: true, force: true })
+  for (let attempt = 0; attempt < 5; attempt++) {
+    try { return fs.rmSync(dir, { recursive: true, force: true, maxRetries: 3, retryDelay: 50 }) } catch {}
+  }
 }
