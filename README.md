@@ -46,13 +46,19 @@ and reads the findings back. Nothing has to be run in a particular order.
 
 ```bash
 curc plan  --scope src,tests --json   # survey and chunk (free)
-curc run   --chunks 1-3 --yes         # launch reviews (billed)
-curc run   --chunks 1-3 --dry-run     # build and prove the pairs, launch nothing
+curc run   --chunks 3-5 --yes         # launch reviews (billed)
+curc run   --chunks 3-5 --dry-run     # build and prove the pairs, launch nothing
 curc status --json                    # planned / running / done
 curc findings --json                  # findings with chunk provenance
 curc stop                             # stop the run in flight
 curc clean --yes                      # remove curc worktrees and branches
+curc unlock                           # clear a lock a dead supervisor left behind
 ```
+
+`--chunks` takes **chunk ids** — the numbers in the `#` column. They are monotonic
+across re-plans and never reused, so after the first re-plan they no longer match
+positions in the list; an id that is not in the plan is refused rather than substituted.
+`--scope` accepts `src,tests` or repeated `--scope` flags.
 
 `--yes` is the only way a billed run starts without a terminal. Every prompt in the
 guided flow has a flag equivalent, and curc errors with the flag name rather than
@@ -106,10 +112,11 @@ Two byte-identical files share one sha and so share coverage — same content, s
 | `.claude/curc/findings/` | raw ultrareview output, one file per chunk |
 | `.claude/curc/logs/` | per-chunk logs and the supervisor log |
 | `.claude/curc/runs/` | one record per review |
+| `.claude/curc/queues/` | one queue per launched run |
 | `.claude/worktrees/curc-*` | review worktrees, removed as each chunk finishes |
 
-curc offers to add `.claude/curc/` to `.gitignore`; it never edits the file silently.
-Peak footprint is three worktrees, not one per chunk.
+curc offers to add `.claude/curc/` and `.claude/worktrees/` to `.gitignore`; it never
+edits the file silently. Peak footprint is three worktrees, not one per chunk.
 
 ## Safety
 
@@ -121,6 +128,14 @@ on a pull request.
 These are not promises, they are tests — see `test/refs.test.js`, which asserts the
 index bytes, `git status`, HEAD, the current branch, and an unstaged edit are all
 identical before and after a chunk is built, on a deliberately dirty repository.
+
+**Nothing is reviewed twice.** A run reserves its lock before it writes anything, and
+each chunk takes an atomic claim immediately before the one call that spends money — so
+two `curc run` at once cannot both launch, and a chunk cannot be billed twice however
+that goes wrong. curc never reclaims a stale lock on its own, because two processes both
+deciding a lock is stale is exactly the failure worth paying to avoid; `curc unlock`
+clears one deliberately. A review that hangs is killed rather than holding a slot
+forever.
 
 curc reviews **committed** content. Uncommitted changes are not in any review, and it
 says so.
@@ -146,6 +161,7 @@ allowed tools, so spending always takes a deliberate act from you.
 |---|---|
 | `CURC_CLAUDE_BIN` | path to the `claude` binary, if it is not on PATH |
 | `CURC_COST_LOW` / `CURC_COST_HIGH` | correct the per-review cost band |
+| `CURC_WATCHDOG_MS` | shorten curc's own bound on a single review |
 | `NO_COLOR` | plain output |
 
 ## License

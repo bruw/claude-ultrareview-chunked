@@ -2,14 +2,18 @@
   "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
   "name": "curc",
   "description": "curc — Claude UltraReview Chunk. Whole-codebase ultrareview sweeps.",
-  "owner": { "name": "artdiev" },
+  "owner": {
+    "name": "artdiev"
+  },
   "plugins": [
     {
       "name": "curc",
-      "version": "0.1.0",
+      "version": "0.2.0",
       "description": "Chunked whole-codebase sweeps with Claude Code's ultrareview.",
       "source": ".",
-      "author": { "name": "artdiev" },
+      "author": {
+        "name": "artdiev"
+      },
       "category": "code-review",
       "homepage": "https://github.com/artdiev/curc"
     }

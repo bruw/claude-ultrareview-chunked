@@ -59,8 +59,11 @@ Then ask for approval with `AskUserQuestion`. **Approval means the user said yes
 stated chunk count and a stated dollar range.** A vague "go ahead" that did not follow
 those numbers is not approval — state the numbers and ask again.
 
-**4 — Hand off.** Give them the `curc run` line. Reviews take 5–10 minutes each, run in
-the background, and survive closing the terminal.
+**4 — Hand off.** Give them the `curc run` line. **`--chunks` takes chunk ids** — the
+numbers in the `#` column, which are monotonic across re-plans and so stop matching list
+positions after the first one. An id that is not in the plan is refused rather than
+substituted. Reviews take 5–10 minutes each, run in the background, and survive closing
+the terminal.
 
 **5 — Follow along.** `curc status --json`, on a slow cadence — minutes, never seconds.
 A full sweep takes hours to days. Do not busy-loop.
@@ -73,6 +76,9 @@ A full sweep takes hours to days. Do not busy-loop.
 - Classify: **confirmed** (the code still says what the finding claims), **stale** (the
   file changed since review — re-check before reporting), or **false positive**
   (ultrareview is a probabilistic reviewer and produces them).
+- A chunk whose `findingsParsed` is `false` exited cleanly but returned a payload curc
+  could not read. It still counts as covered, so it will not re-bill on the next plan —
+  report it as unreviewed content rather than as a chunk with no findings.
 - Group confirmed findings **by theme, not by chunk** — one real defect often surfaces
   in several chunks — and rank by blast radius.
 
@@ -82,7 +88,15 @@ treat each fix as ordinary work: confirm the defect in the code first.
 ## Guardrails
 
 - A chunk reported as `orphaned` had its supervisor die while a review was in flight.
-  Report it; never re-run it, because that double-bills.
-- Never suggest `curc clean --all`; it removes findings.
+  Report it; never re-run it, because that may double-bill. `curc run` refuses these
+  without `--force`, and the per-chunk claim file refuses the spend regardless — but
+  `--force` is the user's call to make, not yours.
+- `curc clean` removes only curc's branches and worktrees; findings and the ledger are
+  kept. There is no `--all`.
+- If a repo says a run is in flight but nothing is running, the supervisor died holding
+  its lock. curc never reclaims one by itself — two supervisors both deciding a lock is
+  stale is a double-billed sweep — so tell the user to run `curc unlock`. It is not in
+  this skill's allowed-tools, for the same reason `curc run` is not: it stands directly
+  in front of a billed retry.
 - curc reviews **committed** content. If the working tree is dirty, say that those
   changes are not in any review.

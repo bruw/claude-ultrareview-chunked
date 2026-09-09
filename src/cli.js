@@ -1,3 +1,4 @@
+import fs from 'node:fs'
 import { parseArgs } from 'node:util'
 import { repoRoot } from './git.js'
 import { layout, ensureDirs } from './paths.js'
@@ -13,7 +14,9 @@ import { guided } from './app.js'
 import { c, say, out, num, table, paintStatus, costBand, costRange, sanitize } from './ui.js'
 import { resolveIds } from './prompt.js'
 
-const VERSION = '0.1.0'
+// One source of truth: the version lived here, in package.json, and in two
+// plugin manifests, which is three chances to forget one.
+const VERSION = JSON.parse(fs.readFileSync(new URL('../package.json', import.meta.url), 'utf8')).version
 
 const OPTIONS = {
   help: { type: 'boolean', short: 'h' },
@@ -331,14 +334,18 @@ function usage () {
 
   curc                       guided, interactive — start here
   curc plan   [--scope s]    survey and chunk the repo (free)
-  curc run    --chunks 1-3   launch reviews  ${c.red('(billed)')}  — needs --yes
+  curc run    --chunks 3-5   launch reviews  ${c.red('(billed)')}  — needs --yes
   curc status                what is planned, running, done
   curc findings [--json]     findings from completed chunks
   curc stop                  stop the run in flight
   curc clean  --yes          remove curc worktrees and branches
+  curc unlock                clear a lock left behind by a dead supervisor
 
+  --chunks    chunk ids, the numbers in the # column: 3, 3-5, 3,7, all
+  --scope     --scope src,tests  or  --scope src --scope tests
   --json      machine-readable output      --repo <path>   act on another repo
   --dry-run   build and prove, launch nothing
+  --force     review a chunk that may already have been billed
   --yes       consent to spend (required when not a terminal)
 
 Each chunk is one cloud ultrareview: $5–$25 in usage credits after the 3 free runs.
